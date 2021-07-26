@@ -42,7 +42,6 @@ sub main()
     dim as BoundsType bounds
     dim as double tmr, seconds, nextFrameTime
     dim as integer i, j, k
-    dim as boolean collided
     
     bounds.lft = 0: bounds.rgt = SCREEN_W
     bounds.top = 0: bounds.btm = SCREEN_H
@@ -67,7 +66,6 @@ sub main()
         screencopy 1, 0
         
         
-        collided = false
         for i = 0 to ubound(balls)
             ball = @balls(i)
             vectorAdd(ball->position, ball->velocity)
@@ -81,9 +79,7 @@ sub main()
                 if i = j then continue for
                 if ballsIntersect(balls(i), balls(j)) then
                     disentangle(balls(i), balls(j))
-                    bounce(balls(i), balls(j))
                     if ballsNotIntersect(balls(i), balls(j)) then
-                        collided = true
                         for k = 0 to ubound(balls)
                             select case k
                                 case i   : balls(k).colr = Colors.Collider
@@ -98,6 +94,7 @@ sub main()
                             balls(k).colr = Colors.Default
                         next k
                     end if
+                    bounce(balls(i), balls(j))
                 end if
             next j
         next i
@@ -109,9 +106,12 @@ end sub
 sub renderFrame()
     
     cls
+    
     DrawBalls
-    locate 1, 1: print totalMomentum
-        
+    
+    locate 1, 1
+    print using "##.##"; totalMomentum
+    
 end sub
 
 function AddBall(position as VectorType ptr = 0, velocity as VectorType ptr = 0, radius as double = 1.0, colr as integer = &hffffff) as BallType ptr
@@ -214,15 +214,15 @@ end sub
 
 sub bounce(byref a as BallType, byref b as BallType)
     
-    dim as VectorType norm, forceA, forceB
+    dim as VectorType norm, force
+    dim as double mag
     
     norm   = (a.position - b.position).unit()
-    forceA = -norm * a.velocity.size() * abs(dot(a.velocity.unit(), norm))
-    forceB =  norm * b.velocity.size() * abs(dot(b.velocity.unit(), norm))
-    a.velocity += forceB
-    a.velocity -= forceA
-    b.velocity += forceA
-    b.velocity -= forceB
+    mag    = a.velocity.size() * (dot(a.velocity.unit(), -norm)) _
+           + b.velocity.size() * (dot(b.velocity.unit(),  norm))
+    force  = norm * mag
+    a.velocity += force
+    b.velocity -= force
     
     a.position += a.velocity
     b.position += b.velocity
