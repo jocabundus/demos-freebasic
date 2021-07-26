@@ -165,7 +165,10 @@ type BallType
     position as VectorType
     velocity as VectorType
     radius as double
-    colr as integer
+    mass  as double
+    spin  as double
+    angle as double
+    colr  as integer
     declare property lft() as double
     declare property rgt() as double
     declare property top() as double
