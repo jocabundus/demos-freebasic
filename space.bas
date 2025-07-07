@@ -124,31 +124,47 @@ end function
 '=======================================================================
 '= OBJECT3
 '=======================================================================
+type Face3
+    vertexIndexes(2) as integer
+end type
 type Object3
     sid as string
     position as Vector3
     orientation(0 to 2) as Vector3
     vertexes(any) as Vector3
+    faces(any) as Face3
 end type
 function object_read(sid as string) as Object3
     dim o as Object3
     restore
-    dim as string datum
+    dim as string datum, key
     while true
         read datum
         if datum = sid then
             o.sid = sid
-            dim as integer numVertexes
-            dim as double scale
-            read numVertexes
-            read scale
-            redim o.vertexes(numVertexes-1) as Vector3
-            for i as integer = 0 to numVertexes-1
-                read o.vertexes(i).x
-                read o.vertexes(i).y
-                read o.vertexes(i).z
-                vector_scale(o.vertexes(i), scale)
-            next i
+            dim as double scale = 1
+            while true
+                read key
+                select case key
+                case "end"
+                    exit while
+                case "f"
+                    dim as integer i, n = ubound(o.faces)+1
+                    redim preserve o.faces(n)
+                    for i = 0 to 2
+                        read o.faces(n).vertexIndexes(i)
+                        o.faces(n).vertexIndexes(i) -= 1
+                    next i
+                case "s"
+                    read scale
+                case "v"
+                    dim as integer n = ubound(o.vertexes)+1
+                    redim preserve o.vertexes(n)
+                    read o.vertexes(n).x
+                    read o.vertexes(n).y
+                    read o.vertexes(n).z
+                end select
+            wend
             exit while
         end if
     wend
@@ -254,29 +270,32 @@ for i as integer = 0 to ubound(particles)
 next i
 
 sub renderObjects(objects() as Object3, camera as CameraType)
+    dim as Vector2Int v2(2)
     for i as integer = 0 to ubound(objects)
         dim as Object3 o = objects(i)
-        dim as boolean isVisible = false
-        dim as Vector2Int v2(ubound(o.vertexes))
-        for j as integer = 0 to ubound(o.vertexes)
-            dim as Vector3 vertex = o.vertexes(j)
-            dim as Vector3 vewtex = vertexToView(vertex, camera)
-            v2(j) = viewToScreen(vewtex)
-            if vewtex.z < -1 then
-                isVisible = true
+        for j as integer = 0 to ubound(o.faces)
+            dim as boolean isVisible = false
+            dim as Face3 face = o.faces(j)
+            for k as integer = 0 to 2
+                dim as integer index = face.vertexIndexes(k)
+                dim as Vector3 vertex = o.vertexes(index)
+                dim as Vector3 vewtex = vertexToView(vertex, camera)
+                v2(k) = viewToScreen(vewtex)
+                if vewtex.z < -1 then
+                    isVisible = true
+                end if
+            next k
+            if isVisible then
+                for k as integer = 0 to ubound(v2)
+                    dim as Vector2Int p = v2(k)
+                    if k = 0 then
+                        line(p.x, p.y)-(p.x, p.y), &hffffff
+                    else
+                        line -(p.x, p.y), &hffffff
+                    end if
+                next k
             end if
         next j
-        if isVisible then
-            for j as integer = 0 to ubound(v2)
-                dim as Vector2Int p = v2(j)
-                print p.x, p.y
-                if j = 0 then
-                    line(p.x, p.y)-(p.x, p.y), &hffffff
-                else
-                    line -(p.x, p.y), &hffffff
-                end if
-            next j
-        end if
     next i
 end sub
 
@@ -503,12 +522,26 @@ end
 '= DATA
 '=======================================================================
 data 9
-data "cube", 8, 10
-data 1.000000, 1.000000, -1.000000
-data 1.000000, -1.000000, -1.000000
-data 1.000000, 1.000000, 1.000000
-data 1.000000, -1.000000, 1.000000
-data -1.000000, 1.000000, -1.000000
-data -1.000000, -1.000000, -1.000000
-data -1.000000, 1.000000, 1.000000
-data -1.000000, -1.000000, 1.000000
+data "cube"
+data "s",  10
+data "v",  1.000000,  1.000000, -1.000000
+data "v",  1.000000, -1.000000, -1.000000
+data "v",  1.000000,  1.000000,  1.000000
+data "v",  1.000000, -1.000000,  1.000000
+data "v", -1.000000,  1.000000, -1.000000
+data "v", -1.000000, -1.000000, -1.000000
+data "v", -1.000000,  1.000000,  1.000000
+data "v", -1.000000, -1.000000,  1.000000
+data "f", 5, 3, 1
+data "f", 3, 8, 4
+data "f", 7, 6, 8
+data "f", 2, 8, 6
+data "f", 1, 4, 2
+data "f", 5, 2, 6
+data "f", 5, 7, 3
+data "f", 3, 7, 8
+data "f", 7, 5, 6
+data "f", 2, 4, 8
+data "f", 1, 3, 4
+data "f", 5, 1, 2
+data "end"
