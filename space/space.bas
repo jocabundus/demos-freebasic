@@ -9,7 +9,7 @@ using FB
 #define myFormat(f) iif(f >= 0, " ", "-") + str(abs(fix(f))) + "." + str(int(abs(frac(f)) * 100))
 
 const SEED = 1337
-const NUM_PARTICLES = 1000
+const NUM_PARTICLES = 2500
 const FIELD_SIZE = 500
 const AXIS_X = 0
 const AXIS_Y = 1
@@ -24,14 +24,14 @@ const PLANE_XY = 2
 dim shared as integer SCREEN_W
 dim shared as integer SCREEN_H
 dim shared as integer SCREEN_DEPTH
-dim shared as double  SCREEN_ASPECT_XY
-dim shared as double  SCREEN_ASPECT_YX
+dim shared as double  SCREEN_ASPECT_X
+dim shared as double  SCREEN_ASPECT_Y
 dim shared as integer FULL_SCREEN = 1
 
 screeninfo SCREEN_W, SCREEN_H, SCREEN_DEPTH
 screenres SCREEN_W, SCREEN_H, SCREEN_DEPTH, 2, FULL_SCREEN
-SCREEN_ASPECT_XY = SCREEN_W / SCREEN_H
-SCREEN_ASPECT_YX = SCREEN_H / SCREEN_W
+SCREEN_ASPECT_X = SCREEN_W / SCREEN_H
+SCREEN_ASPECT_Y = SCREEN_H / SCREEN_W
 
 '=======================================================================
 '= OBJECT3
@@ -125,14 +125,18 @@ end function
 '=======================================================================
 function viewToScreen(vp as vector3) as Vector2
     dim as Vector2 v2
-    'sp.x *= SCREEN_ASPECT_YX
-    vp.y *= SCREEN_ASPECT_XY
-    v2.x = int((vp.x / vp.z) * SCREEN_W + SCREEN_W/2)
-    v2.y = int((vp.y / vp.z) * SCREEN_H + SCREEN_H/2)
-    v2.y = SCREEN_H - v2.y
+    v2.x = (vp.x / vp.z) * 2
+    v2.y = (vp.y / vp.z) * 2
     return v2
 end function
-
+'~ function viewToScreen(vp as vector3) as Vector2
+    '~ dim as Vector2 v2
+    '~ vp.y *= SCREEN_ASPECT_XY
+    '~ v2.x = int((vp.x / vp.z) * SCREEN_W + SCREEN_W/2)
+    '~ v2.y = int((vp.y / vp.z) * SCREEN_H + SCREEN_H/2)
+    '~ v2.y = SCREEN_H - v2.y
+    '~ return v2
+'~ end function
 '=======================================================================
 '= PARTICLETYPE
 '=======================================================================
@@ -172,21 +176,46 @@ dim as Vector3 worldOrientation(3) = _
 '=======================================================================
 '= START
 '=======================================================================
-randomize SEED
+randomize 'SEED
+window (-SCREEN_ASPECT_X, 1)-(SCREEN_ASPECT_X, -1)
 
 dim as CameraType camera
 dim as Object3 objectCollection(any)
 object_collection_add("cube", objectCollection())
 
+function getStarColor() as integer
+    dim as double saturation
+    dim as double value
+    dim as double r, g, b
+    select case int(20*rnd)
+        '- blue to white stars
+        case is <= 18
+            r = 0
+            g = .3*rnd
+            b = .6+.4*rnd
+            saturation = 0.6*rnd
+            r += (b - r) * (1 - saturation)
+            g += (b - g) * (1 - saturation)
+        '- red, orange, yellow stars
+        case else
+            saturation = 0.9
+            r = .7+.3*rnd
+            g = .5+.5*rnd
+            b = 0
+            b += (iif(r < g, r, g) - b) * (1 - saturation)
+    end select
+    return rgb(int(256*r), int(256*g), int(256*b))
+end function
+
 dim as ParticleType particles(NUM_PARTICLES-1)
 for i as integer = 0 to ubound(particles)
     dim as ParticleType p = type(_
         Vector3(_
-            -FIELD_SIZE/2 + FIELD_SIZE * rnd,_
-            -FIELD_SIZE/2 + FIELD_SIZE * rnd,_
-            -FIELD_SIZE/2 + FIELD_SIZE * rnd _
+            FIELD_SIZE/2 * rnd*sin(2*PI*rnd),_
+            FIELD_SIZE/2 * rnd*sin(2*PI*rnd),_
+            FIELD_SIZE/2 * rnd*sin(2*PI*rnd) _
         ),_
-        rgb(16*(1+15*rnd)-1, 16*(1+15*rnd)-1, 16*(1+15*rnd)-1)_
+        getStarColor()_
     )
     particles(i) = p
 next i
@@ -208,20 +237,26 @@ sub renderObjects(objects() as Object3, camera as CameraType)
                 end if
             next k
             if isVisible then
-                dim as Vector2 a, b
+                dim as Vector2 a, b, c
                 a = v2(1) - v2(0)
-                b = v2(2) - v2(0)
-                if vector2_cross(a, b) < 0 then
+                b = v2(2) - v2(1)
+                if vector2_cross(a, b) >= 0 then
                     continue for
                 end if
                 for k as integer = 0 to ubound(v2)
-                    dim as Vector2 p = v2(k)
-                    if k = 0 then
-                        line(p.x, p.y)-(p.x, p.y), &hffffff
-                    else
-                        line -(p.x, p.y), &hffffff
-                    end if
+                    a = v2(k)
+                    if a.x < -10 or a.x > 10 then isVisible = false: exit for
+                    if a.y < -10 or a.y > 10 then isVisible = false: exit for
+                    if a.z < -10 or a.z > 10 then isVisible = false: exit for
                 next k
+                if isVisible then
+                    a = v2(0)
+                    b = v2(1)
+                    c = v2(2)
+                    line(a.x, a.y)-(b.x, b.y), &hffffff
+                    line(b.x, b.y)-(c.x, c.y), &hffffff
+                    line(c.x, c.y)-(a.x, a.y), &hffffff
+                end if
             end if
         next j
     next i
@@ -233,9 +268,11 @@ sub renderParticles(particles() as ParticleType, camera as CameraType)
         dim as Vector3 vp = vertexToView(particle.position, camera)
         if vp.z < -1 then
             dim as Vector2 sp = viewToScreen(vp)
-            dim as integer size = abs(int(SCREEN_W / vp.z)\2)
-            if size > 1 then
-                line(sp.x-size, sp.y-size)-(sp.x+size, sp.y+size), particle.color3, b
+            dim as double size = abs(1/vp.z) * 0.2
+            if size > 0 then
+                'line(sp.x-size, sp.y-size)-(sp.x+size, sp.y+size), particle.color3, bf
+                circle(sp.x, sp.y), size, particle.color3
+                'circle(sp.x, sp.y), 0.004, particle.color3
             elseif size > 0 then
                 pset(sp.x, sp.y), particle.color3
             end if
@@ -330,15 +367,19 @@ function getOrientationStats(camera as CameraType) as string
     return body
 end function
 
-dim as double speed = 30
-dim as double shiftBoost = 2
+dim as double rotateSpeed = 50
+dim as double translateSpeed = 15
+dim as double shiftBoost = 3
+dim as double ctrlBoost = 1/5
 screenset 1, 0
 
 dim as double frameTimeStart = 0
 dim as double frameTimeEnd   = 0
 
 dim as boolean mouseReady = false
+dim as Vector3 deltas
 
+setmouse , , 0
 while true
     if multikey(SC_ESCAPE) then
         exit while
@@ -351,90 +392,166 @@ while true
     dim as string s = getOrientationStats(camera)
     printStringBlock(1, 1, s, "ORIENTATION", "_")
     
+
+    dim as integer mx, my, mb
+    dim as double fr = 0.11
+    dim as Vector2 vm
     
-    dim as integer mx, my
-    if mouseReady then
-        getmouse mx, my
-        if mx > -1 then mx -= SCREEN_W\2 else mx = 0
-        if my > -1 then my -= SCREEN_H\2 else my = 0
-        locate 15, 1: print mx, my
-    end if
+    'if mouseReady then
+        getmouse mx, my, , mb
+        
+        vm.x = pmap(mx, 2)
+        vm.y = pmap(my, 3)
+        dim as double stp = PI/3
+        dim as double start = atan2(vm.y, vm.x)
+        if start < 0 then start += 2*PI
+        for rad as double = start-2*PI-stp/4 to 2*PI step stp
+            if rad >= 0 then
+                circle(0, 0), fr, &h808080, rad, rad+stp/2
+            end if
+        next rad
+        dim as double sz
+        dim as integer colr = &hd0b000
+        dim as Vector2 o, p
+        if mb > 0 then
+            sz = iif(vm.length() <= 1, vm.length(), 1)
+            sz = 0.02 + sz/60
+            o = vm.unit()*fr*1.15
+            p = o.unit().toLeft()*sz
+            line(o.x, o.y)-step(p.x, p.y), colr
+            p = p.unit().toRight().rotate(radians(-30))*sz*2
+            line -step(p.x, p.y), colr
+            p = p.unit().rotate(radians(-120))*sz*2 '-p.unit()*sz*2
+            line -step(p.x, p.y), colr
+            p = p.unit().rotate(radians(-120))*sz
+            line -step(p.x, p.y), colr
+        end if
+        
+        dim as ulong ants = &b11000011110000111100001111000011 shr int(frac(timer*1.5)*16)
+        
+        o = vm
+        sz = 0.076
+        p = Vector2(radians(-75))*sz
+        line(o.x, o.y)-step(p.x, p.y), &hf0f0f0, , ants
+        p = p.rotate(radians(105))*0.8
+        line -step(p.x, p.y), &hf0f0f0, , ants
+        line -(o.x, o.y), &hf0f0f0, , ants
+        dim as double e = vm.length()
+        if e > 1 then
+            vm = vm.unit()
+            e = 1
+        end if
+        vm *= sin(e * 0.5 * PI) * 100
+        if mb and 1 then
+            deltas.y = vm.x
+            deltas.x = vm.y
+        elseif mb and 2 then
+            deltas.z = vm.x
+            deltas.x = vm.y
+        else
+            deltas.x *= 0.9
+            deltas.y *= 0.9
+            deltas.z *= 0.9
+        end if
+    'end if
+    'screensync
     screencopy 1, 0
     dim as double delta = timer - frameTimeStart
+    dim as double deltaRotate = delta * rotateSpeed
+    dim as double deltaTranslate = delta * translateSpeed
     frameTimeStart = timer
-    setmouse SCREEN_W\2, SCREEN_H\2: mouseReady = true
 
-    delta *= speed
-    if multikey(SC_LSHIFT) then
-        delta *= shiftBoost
+    if multikey(SC_LSHIFT) or multikey(SC_RSHIFT) then
+        deltaRotate *= shiftBoost
+        deltaTranslate *= shiftBoost
     end if
-    
+    if multikey(SC_CONTROL) then
+        deltaRotate *= ctrlBoost
+        deltaTranslate *= ctrlBoost
+    end if
+
     if multikey(SC_A) then
-        camera.position -= camera.orientation(AXIS_X) * delta
+        camera.position -= camera.orientation(AXIS_X) * deltaTranslate
     elseif multikey(SC_D) then
-        camera.position += camera.orientation(AXIS_X) * delta
+        camera.position += camera.orientation(AXIS_X) * deltaTranslate
     elseif multikey(SC_W) then
-        camera.position += camera.orientation(AXIS_Z) * delta
+        camera.position += camera.orientation(AXIS_Z) * deltaTranslate
     elseif multikey(SC_S) then
-        camera.position -= camera.orientation(AXIS_Z) * delta
+        camera.position -= camera.orientation(AXIS_Z) * deltaTranslate
     elseif multikey(SC_Q) then
-        camera.position += camera.orientation(AXIS_Y) * delta
+        camera.position += camera.orientation(AXIS_Y) * deltaTranslate
     elseif multikey(SC_Z) then
-        camera.position -= camera.orientation(AXIS_Y) * delta
+        camera.position -= camera.orientation(AXIS_Y) * deltaTranslate
     end if
 
-    dim as Vector3 vR = camera.orientation(AXIS_X)
-    dim as Vector3 vU = camera.orientation(AXIS_Y)
-    dim as Vector3 vF = camera.orientation(AXIS_Z)
     dim as double turnDelta = 0
     if not multikey(SC_CONTROL) then
         if multikey(SC_RIGHT) then
-            turnDelta = -delta
+            turnDelta = -deltaRotate
         elseif multikey(SC_LEFT) then
-            turnDelta =  delta
+            turnDelta =  deltaRotate
         end if
     end if
-    if mx <> 0 then
-        turnDelta = -mx
+    if deltas.y <> 0 then
+        turnDelta += -deltas.y * delta
     end if
     if turnDelta <> 0 then
-        dim as Vector3 x1 = vector3_rotate(baseOrientation(AXIS_X), radians(turnDelta), PLANE_XZ)
+        dim as Vector3 vR = camera.orientation(AXIS_X)
+        dim as Vector3 vU = camera.orientation(AXIS_Y)
+        dim as Vector3 vF = camera.orientation(AXIS_Z)
         dim as Vector3 z1 = vector3_rotate(baseOrientation(AXIS_Z), radians(turnDelta), PLANE_XZ)
-        camera.orientation(AXIS_X) = vR*x1.x + vU*x1.y + vF*x1.z
-        camera.orientation(AXIS_Z) = vR*z1.x + vU*z1.y + vF*z1.z
+        dim as Vector3 x1 = vector3_rotate(baseOrientation(AXIS_X), radians(turnDelta), PLANE_XZ)
+        dim as Vector3 y1 = vector3_cross(z1, x1)
+        camera.orientation(AXIS_Z) = (vR*z1.x + vU*z1.y + vF*z1.z).unit()
+        camera.orientation(AXIS_X) = (vR*x1.x + vU*x1.y + vF*x1.z).unit()
+        camera.orientation(AXIS_Y) = (vR*y1.x + vU*y1.y + vF*y1.z).unit()
     end if
 
     turnDelta = 0
     if multikey(SC_CONTROL) then
         if multikey(SC_RIGHT) then
-            turnDelta = -delta
+            turnDelta = -deltaRotate
         elseif multikey(SC_LEFT) then
-            turnDelta =  delta
+            turnDelta =  deltaRotate
         end if
     end if
+    if deltas.z <> 0 then
+        turnDelta += -deltas.z * delta
+    end if
     if turnDelta <> 0 then
+        dim as Vector3 vR = camera.orientation(AXIS_X)
+        dim as Vector3 vU = camera.orientation(AXIS_Y)
+        dim as Vector3 vF = camera.orientation(AXIS_Z)
         dim as Vector3 x1 = vector3_rotate(baseOrientation(AXIS_X), radians(turnDelta), PLANE_XY)
         dim as Vector3 y1 = vector3_rotate(baseOrientation(AXIS_Y), radians(turnDelta), PLANE_XY)
-        camera.orientation(AXIS_X) = vR*x1.x + vU*x1.y + vF*x1.z
-        camera.orientation(AXIS_Y) = vR*y1.x + vU*y1.y + vF*y1.z
+        dim as Vector3 z1 = vector3_cross(x1, y1)
+        camera.orientation(AXIS_X) = (vR*x1.x + vU*x1.y + vF*x1.z).unit()
+        camera.orientation(AXIS_Y) = (vR*y1.x + vU*y1.y + vF*y1.z).unit()
+        camera.orientation(AXIS_Z) = (vR*z1.x + vU*z1.y + vF*z1.z).unit()
     end if
 
     turnDelta = 0
     if multikey(SC_UP) then
-        turnDelta = -delta
+        turnDelta = -deltaRotate
     elseif multikey(SC_DOWN) then
-        turnDelta =  delta
-    elseif my <> 0 then
-        turnDelta = my
+        turnDelta =  deltaRotate
+    end if
+    if deltas.x <> 0 then
+        turnDelta += -deltas.x * delta
     end if
     if turnDelta <> 0 then
+        dim as Vector3 vR = camera.orientation(AXIS_X)
+        dim as Vector3 vU = camera.orientation(AXIS_Y)
+        dim as Vector3 vF = camera.orientation(AXIS_Z)
         dim as Vector3 y1 = vector3_rotate(baseOrientation(AXIS_Y), radians(turnDelta), PLANE_YZ)
         dim as Vector3 z1 = vector3_rotate(baseOrientation(AXIS_Z), radians(turnDelta), PLANE_YZ)
-        camera.orientation(AXIS_Y) = vR*y1.x + vU*y1.y + vF*y1.z
-        camera.orientation(AXIS_Z) = vR*z1.x + vU*z1.y + vF*z1.z
+        dim as Vector3 x1 = vector3_cross(y1, z1)
+        camera.orientation(AXIS_Y) = (vR*y1.x + vU*y1.y + vF*y1.z).unit()
+        camera.orientation(AXIS_Z) = (vR*z1.x + vU*z1.y + vF*z1.z).unit()
+        camera.orientation(AXIS_X) = (vR*x1.x + vU*x1.y + vF*x1.z).unit()
     end if
 wend
-sleep
+setmouse , , 1
 end
 
 '=======================================================================
