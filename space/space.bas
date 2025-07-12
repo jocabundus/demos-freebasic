@@ -183,26 +183,67 @@ dim as CameraType camera
 dim as Object3 objectCollection(any)
 object_collection_add("cube", objectCollection())
 
-function getStarColor() as integer
-    dim as double saturation
-    dim as double value
+type PointLight
+    position as Vector2
+    color3 as integer
+    intensity as double
+    declare constructor ()
+    declare constructor (position as Vector2, color3 as integer, intensity as double)
+end type
+constructor PointLight
+end constructor
+constructor PointLight(position as Vector2, color3 as integer, intensity as double)
+    this.position = position
+    this.color3 = color3
+    this.intensity = intensity
+end constructor
+
+function clamp(value as double, min as double = 0, max as double = 1) as double
+    return iif(value < min, min, iif(value > max, max, value))
+end function
+
+function pickStarColor(a as double, m as double=1, variant as integer = 1) as integer
+    dim as Vector2 va
+    va = Vector2(a) * m
     dim as double r, g, b
-    select case int(20*rnd)
-        '- blue to white stars
-        case is <= 18
-            r = 0
-            g = .3*rnd
-            b = .6+.4*rnd
-            saturation = 0.6*rnd
-            r += (b - r) * (1 - saturation)
-            g += (b - g) * (1 - saturation)
-        '- red, orange, yellow stars
-        case else
-            saturation = 0.9
-            r = .7+.3*rnd
-            g = .5+.5*rnd
-            b = 0
-            b += (iif(r < g, r, g) - b) * (1 - saturation)
+    select case variant
+        case 1
+            dim as PointLight lights(3) = _
+            {_
+                type(Vector2(0/3*PI)/2, &hff0000, 1),_
+                type(Vector2(2/3*PI)/2, &h00ff00, 1),_
+                type(Vector2(4/3*PI)/2, &h0000ff, 1),_
+                type(Vector2(0, 0)  , &hffffff, 1) _
+            }
+            for i as integer = 0 to ubound(lights)
+                dim as Vector2 p = lights(i).position
+                dim as integer c = lights(i).color3
+                dim as double  m = lights(i).intensity
+                dim as double  d = clamp(1-sin((p - va).length))
+                r += int(d * m * (c shr 16 and &hff))
+                g += int(d * m * (c shr  8 and &hff))
+                b += int(d * m * (c        and &hff))
+            next i
+            return rgb(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255))
+        case 2
+            dim as PointLight lights(4) = _
+            {_
+                type(Vector2(0/4*PI)*0, &hffffff, 1),_
+                type(Vector2(0/4*PI)*1, &h0000ff, 1/2),_
+                type(Vector2(2/4*PI)*1, &h0000ff, 1/2),_
+                type(Vector2(4/4*PI)*1, &h0000ff, 1/2),_
+                type(Vector2(6/4*PI)*1, &h0000ff, 1/2) _
+            }
+            for i as integer = 0 to ubound(lights)
+                dim as Vector2 p = lights(i).position
+                dim as integer c = lights(i).color3
+                dim as double  m = lights(i).intensity
+                dim as double  d = clamp(1-sin((p - va).length))
+                r += int(d * m * (c shr 16 and &hff))
+                g += int(d * m * (c shr  8 and &hff))
+                b += int(d * m * (c        and &hff))
+            next i
+            return rgb(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255))
     end select
     return rgb(int(256*r), int(256*g), int(256*b))
 end function
@@ -215,7 +256,7 @@ for i as integer = 0 to ubound(particles)
             FIELD_SIZE/2 * rnd*sin(2*PI*rnd),_
             FIELD_SIZE/2 * rnd*sin(2*PI*rnd) _
         ),_
-        getStarColor()_
+        pickStarColor(rnd*2*PI, rnd, 2)_
     )
     particles(i) = p
 next i
