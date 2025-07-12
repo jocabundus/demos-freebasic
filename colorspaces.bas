@@ -275,6 +275,21 @@ function clamp(value as double, min as double = 0, max as double = 1) as double
     return iif(value < min, min, iif(value > max, max, value))
 end function
 
+type PointLight
+    position as Vector2
+    color3 as integer
+    intensity as double
+    declare constructor ()
+    declare constructor (position as Vector2, color3 as integer, intensity as double)
+end type
+constructor PointLight
+end constructor
+constructor PointLight(position as Vector2, color3 as integer, intensity as double)
+    this.position = position
+    this.color3 = color3
+    this.intensity = intensity
+end constructor
+
 function pickColor(a as double, m as double=1, variant as integer=0) as integer
     dim as Vector2 vr, vg, vb, va
     vr = Vector2(2*PI*1/1)
@@ -304,14 +319,68 @@ function pickColor(a as double, m as double=1, variant as integer=0) as integer
             g = clamp(sin(2-(vg - va).length))
             b = clamp(sin(2-(vb - va).length))
         case 6
-            r = clamp(sqr(sin(abs(2-(vr - va).length))))
-            g = clamp(sqr(sin(abs(2-(vg - va).length))))
-            b = clamp(sqr(sin(abs(2-(vb - va).length))))
+            dim as PointLight lights(3) = _
+            {_
+                type(Vector2(0/3*PI)/2, &hff0000, 1),_
+                type(Vector2(2/3*PI)/2, &h00ff00, 1),_
+                type(Vector2(4/3*PI)/2, &h0000ff, 1),_
+                type(Vector2(0, 0)    , &hffffff, 1) _
+            }
+            for i as integer = 0 to ubound(lights)
+                dim as Vector2 p = lights(i).position
+                dim as integer c = lights(i).color3
+                dim as double  m = lights(i).intensity
+                dim as double  d = clamp(1-sin((p - va).length))
+                r += int(d * m * (c shr 16 and &hff))
+                g += int(d * m * (c shr  8 and &hff))
+                b += int(d * m * (c        and &hff))
+            next i
+            return rgb(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255))
+        case 7
+            dim as PointLight lights(4) = _
+            {_
+                type(Vector2(0/4*PI)*0, &hffffff, 1),_
+                type(Vector2(0/4*PI)*1, &h0000ff, 1/2),_
+                type(Vector2(2/4*PI)*1, &h0000ff, 1/2),_
+                type(Vector2(4/4*PI)*1, &h0000ff, 1/2),_
+                type(Vector2(6/4*PI)*1, &h0000ff, 1/2) _
+            }
+            for i as integer = 0 to ubound(lights)
+                dim as Vector2 p = lights(i).position
+                dim as integer c = lights(i).color3
+                dim as double  m = lights(i).intensity
+                dim as double  d = clamp(1-sin((p - va).length))
+                r += int(d * m * (c shr 16 and &hff))
+                g += int(d * m * (c shr  8 and &hff))
+                b += int(d * m * (c        and &hff))
+            next i
+            return rgb(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255))
+        case 8
+            dim as PointLight lights(6) = _
+            {_
+                type(Vector2(4/4*PI)*0, &hffffff, 1),_
+                type(Vector2(2/4*PI)*1, &h0000ff, 1),_
+                type(Vector2(3/4*PI)*1, &h0000ff, 1),_
+                type(Vector2(4/4*PI)*1, &h0000ff, 1),_
+                type(Vector2(5/4*PI)*1, &h0000ff, 1),_
+                type(Vector2(7/4*PI)*1/2, &hff0000, 1),_
+                type(Vector2(1/4*PI)*1, &hffff00, 1) _
+            }
+            for i as integer = 0 to ubound(lights)
+                dim as Vector2 p = lights(i).position
+                dim as integer c = lights(i).color3
+                dim as double  m = lights(i).intensity
+                dim as double  d = clamp(1-sin((p - va).length))
+                r += int(d * m * (c shr 16 and &hff))
+                g += int(d * m * (c shr  8 and &hff))
+                b += int(d * m * (c        and &hff))
+            next i
+            return rgb(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255))
     end select
     return rgb(int(256*r), int(256*g), int(256*b))
 end function
 
-dim as integer first = 1, last = 6, variant = 1
+dim as integer first = 1, last = 8, variant = 1
 dim as integer key, keyWait
 dim as double rotations(last)
 dim as double lastFrameTime = timer
@@ -342,9 +411,9 @@ while true
     mouse.update()
     dim as integer c = point(pmap(mouse.x, 2), -pmap(mouse.y, 2)) '- another bug?
     dim as string sr, sg, sb
-    sr = str(c and &hff)
+    sr = str(c shr 16 and &hff)
     sg = str(c shr 8 and &hff)
-    sb = str(c shr 16 and &hff)
+    sb = str(c and &hff)
     'sr = string(3-len(sr), "-") + sr
     'sg = string(3-len(sg), "-") + sg
     'sb = string(3-len(sb), "-") + sb
@@ -397,15 +466,11 @@ while true
             exit while
         case SC_ENTER, SC_UP
             variant += 1
-            if variant > last then
-                variant = first
-            end if
+            if variant > last then variant = last
             keyWait = key
         case SC_BACKSLASH, SC_DOWN
             variant -= 1
-            if variant < first then
-                variant = last
-            end if
+            if variant < first then variant = first
             keyWait = key
         case SC_1 to SC_9
             dim as integer v = 1 + key - SC_1
