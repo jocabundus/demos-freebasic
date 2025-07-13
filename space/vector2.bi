@@ -1,21 +1,17 @@
 type Vector2
     x as double
     y as double
-    z as double
     declare constructor()
     declare constructor(x as double, y as double)
     declare constructor(radians as double)
-    declare operator += (a as Vector2)
-    declare operator -= (a as Vector2)
-    declare operator *= (d as double)
-    declare operator /= (d as double)
+    declare property length as double
+    declare property unit as Vector2
     declare function cross(b as Vector2) as double
     declare function dot(b as Vector2) as double
-    declare function length() as double
+    declare function lerp(goal as Vector2, a as double=0.5) as Vector2
     declare function rotate(radians as double) as Vector2
     declare function toLeft() as Vector2
     declare function toRight() as Vector2
-    declare function unit() as Vector2
 end type
 constructor Vector2
 end constructor
@@ -33,11 +29,29 @@ end operator
 operator + (a as Vector2, b as Vector2) as Vector2
     return Vector2(a.x+b.x, a.y+b.y)
 end operator
+operator + (a as Vector2, b as double) as Vector2
+    return Vector2(a.x+b, a.y+b)
+end operator
+operator + (a as double, b as Vector2) as Vector2
+    return b + a
+end operator
 operator - (a as Vector2, b as Vector2) as Vector2
     return a + -b
 end operator
+operator - (a as Vector2, b as double) as Vector2
+    return a + -b
+end operator
+operator * (a as Vector2, b as Vector2) as Vector2
+    return Vector2(a.x*b.x, a.y*b.y)
+end operator
 operator * (a as Vector2, b as double) as Vector2
     return Vector2(a.x*b, a.y*b)
+end operator
+operator * (a as double, b as Vector2) as Vector2
+    return b * a
+end operator
+operator / (a as Vector2, b as Vector2) as Vector2
+    return Vector2(a.x/b.x, a.y/b.y)
 end operator
 operator / (a as Vector2, b as double) as Vector2
     return Vector2(a.x/b, a.y/b)
@@ -50,6 +64,14 @@ function vector2_dot(a as Vector2, b as Vector2) as double
 end function
 function vector2_length(a as Vector2) as double
     return sqr(a.x*a.x + a.y*a.y)
+end function
+function vector2_lerp(from as Vector2, goal as Vector2, a as double = 0.5) as Vector2
+    a = iif(a < 0, 0, iif(a > 1, 1, a))
+    a = 1 - exp(-4.0 * a)
+    return Vector2(_
+        from.x + (goal.x - from.x) * a,_
+        from.y + (goal.y - from.y) * a _
+    )
 end function
 function vector2_rotate(a as Vector2, radians as double) as Vector2
     dim as double rcos = cos(radians)
@@ -69,26 +91,20 @@ function vector2_unit(a as Vector2) as Vector2
     dim m as double = vector2_length(a)
     return Vector2(a.x/m, a.y/m)
 end function
-operator Vector2.+= (b as Vector2)
-    this = this + b
-end operator
-operator Vector2.-= (b as Vector2)
-    this = this - b
-end operator
-operator Vector2.*= (d as double)
-    this = this * d
-end operator
-operator Vector2./= (d as double)
-    this = this / d
-end operator
+property Vector2.length() as double
+    return Vector2_length(this)
+end property
+property Vector2.unit() as Vector2
+    return vector2_unit(this)
+end property
 function Vector2.cross(b as Vector2) as double
     return Vector2_cross(this, b)
 end function
 function Vector2.dot(b as Vector2) as double
     return Vector2_dot(this, b)
 end function
-function Vector2.length() as double
-    return Vector2_length(this)
+function Vector2.lerp(goal as Vector2, a as double=0.5) as Vector2
+    return vector2_lerp(this, goal, a)
 end function
 function Vector2.rotate(radians as double) as Vector2
     return Vector2_rotate(this, radians)
@@ -98,7 +114,4 @@ function Vector2.toLeft() as Vector2
 end function
 function Vector2.toRight() as Vector2
     return vector2_to_right(this)
-end function
-function Vector2.unit() as Vector2
-    return vector2_unit(this)
 end function

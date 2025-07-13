@@ -1,6 +1,9 @@
 #include once "fbgfx.bi"
 #include once "vector3.bi"
 #include once "vector2.bi"
+#include once "orientation3.bi"
+#include once "cframe3.bi"
+#include once "mouse2.bi"
 using FB
 
 #define PI 3.1415926535
@@ -11,12 +14,6 @@ using FB
 const SEED = 1337
 const NUM_PARTICLES = 2500
 const FIELD_SIZE = 500
-const AXIS_X = 0
-const AXIS_Y = 1
-const AXIS_Z = 2
-const PLANE_YZ = 0
-const PLANE_XZ = 1
-const PLANE_XY = 2
 
 '=======================================================================
 '= SCREEN STUFF
@@ -38,12 +35,14 @@ SCREEN_ASPECT_Y = SCREEN_H / SCREEN_W
 '=======================================================================
 type Face3
     vertexIndexes(2) as integer
+    normal as Vector3
 end type
 type Object3
     sid as string
     position as Vector3
     orientation(0 to 2) as Vector3
     vertexes(any) as Vector3
+    normals(any) as Vector3
     faces(any) as Face3
 end type
 function object_read(sid as string) as Object3
@@ -62,11 +61,19 @@ function object_read(sid as string) as Object3
                     exit while
                 case "f"
                     dim as integer i, n = ubound(o.faces)+1
+                    dim as Vector3 vertexes(2)
                     redim preserve o.faces(n)
                     for i = 0 to 2
-                        read o.faces(n).vertexIndexes(i)
-                        o.faces(n).vertexIndexes(i) -= 1
+                        dim as integer vertexIndex
+                        read vertexIndex
+                        vertexIndex -= 1
+                        o.faces(n).vertexIndexes(i) = vertexIndex
+                        vertexes(i) = o.vertexes(vertexIndex)
                     next i
+                    dim as Vector3 a, b
+                    a = vertexes(1) - vertexes(0)
+                    b = vertexes(2) - vertexes(0)
+                    o.faces(n).normal = a.cross(b).unit
                 case "s"
                     read scale
                 case "v"
@@ -95,29 +102,18 @@ function object_collection_add(sid as string, collection() as Object3) as Object
 end function
 
 '=======================================================================
-'= CAMERATYPE
-'=======================================================================
-type CameraType
-    orientation(0 to 2) as Vector3 = _
-    {_
-        type(1,  0,  0),_
-        type(0,  1,  0),_
-        type(0,  0, -1) _
-    }
-    position as Vector3
-end type
-
-'=======================================================================
 '= VIEW TRANSFORM
 '=======================================================================
-function vertexToView(v as vector3, camera as CameraType) as Vector3
-    dim as Vector3 p = v + camera.position
-    dim as Vector3 vp = type(_
-        vector3_dot(camera.orientation(AXIS_X), p),_
-        vector3_dot(camera.orientation(AXIS_Y), p),_
-        vector3_dot(camera.orientation(AXIS_Z), p) _
+function vertexToView(v as vector3, camera as CFrame3, skipTranslation as boolean = false) as Vector3
+    dim as Vector3 p = v
+    if not skipTranslation then
+         p -= camera.position
+    end if
+    return Vector3(_
+        vector3_dot(camera.vRight  , -p),_
+        vector3_dot(camera.vUp     , -p),_
+        vector3_dot(camera.vForward, -p) _
     )
-    return vp
 end function
 
 '=======================================================================
@@ -129,14 +125,7 @@ function viewToScreen(vp as vector3) as Vector2
     v2.y = (vp.y / vp.z) * 2
     return v2
 end function
-'~ function viewToScreen(vp as vector3) as Vector2
-    '~ dim as Vector2 v2
-    '~ vp.y *= SCREEN_ASPECT_XY
-    '~ v2.x = int((vp.x / vp.z) * SCREEN_W + SCREEN_W/2)
-    '~ v2.y = int((vp.y / vp.z) * SCREEN_H + SCREEN_H/2)
-    '~ v2.y = SCREEN_H - v2.y
-    '~ return v2
-'~ end function
+
 '=======================================================================
 '= PARTICLETYPE
 '=======================================================================
@@ -154,34 +143,18 @@ constructor ParticleType (position as Vector3, color3 as integer)
 end constructor
 
 '=======================================================================
-'= BASEORIENTATION
-'=======================================================================
-dim as Vector3 baseOrientation(3) = _
-    {_
-        type(1,  0,  0),_
-        type(0,  1,  0),_
-        type(0,  0,  1) _
-    }
-
-'=======================================================================
-'= WORLDORIENTATION
-'=======================================================================
-dim as Vector3 worldOrientation(3) = _
-    {_
-        type(1,  0,  0),_
-        type(0,  1,  0),_
-        type(0,  0, -1) _
-    }
-
-'=======================================================================
 '= START
 '=======================================================================
 randomize 'SEED
 window (-SCREEN_ASPECT_X, 1)-(SCREEN_ASPECT_X, -1)
 
-dim as CameraType camera
+dim as Mouse2 mouse
+mouse.hide()
+mouse.setMode(Mouse2Mode.Viewport)
+
+dim as CFrame3 camera
 dim as Object3 objectCollection(any)
-object_collection_add("cube", objectCollection())
+object_collection_add("spaceship", objectCollection())
 
 type PointLight
     position as Vector2
@@ -261,49 +234,54 @@ for i as integer = 0 to ubound(particles)
     particles(i) = p
 next i
 
-sub renderObjects(objects() as Object3, camera as CameraType)
+sub renderObjects(objects() as Object3, camera as CFrame3)
     dim as Vector2 v2(2)
     for i as integer = 0 to ubound(objects)
         dim as Object3 o = objects(i)
         for j as integer = 0 to ubound(o.faces)
-            dim as boolean isVisible = false
+            dim as double surfaceCos
+            dim as boolean isVisible = true
             dim as Face3 face = o.faces(j)
             for k as integer = 0 to 2
                 dim as integer index = face.vertexIndexes(k)
                 dim as Vector3 vertex = o.vertexes(index)
                 dim as Vector3 vewtex = vertexToView(vertex, camera)
+                if k = 0 then
+                    surfaceCos = vector3_dot(face.normal, Vector3(0, 1, 0))
+                    dim as Vector3 normal = vertexToView(face.normal, camera, true).unit
+                    if vector3_dot(vewtex, normal) > 0 then
+                        isVisible = false
+                        exit for
+                    end if
+                end if
                 v2(k) = viewToScreen(vewtex)
-                if vewtex.z < -1 then
-                    isVisible = true
+                if vewtex.z > -1 then
+                    isVisible = false
+                    exit for
                 end if
             next k
             if isVisible then
                 dim as Vector2 a, b, c
-                a = v2(1) - v2(0)
-                b = v2(2) - v2(1)
-                if vector2_cross(a, b) >= 0 then
-                    continue for
-                end if
-                for k as integer = 0 to ubound(v2)
-                    a = v2(k)
-                    if a.x < -10 or a.x > 10 then isVisible = false: exit for
-                    if a.y < -10 or a.y > 10 then isVisible = false: exit for
-                    if a.z < -10 or a.z > 10 then isVisible = false: exit for
-                next k
                 if isVisible then
+                    '~ dim as integer cr, cg, cb, colr
+                    '~ cr = int(clamp(surfaceCos)*255)
+                    '~ cg = int(clamp(surfaceCos)*255)
+                    '~ cb = int(clamp(surfaceCos)*255)
+                    '~ colr = rgb(cr, cg, cb)
+                    dim as integer colr = &hffffff
                     a = v2(0)
                     b = v2(1)
                     c = v2(2)
-                    line(a.x, a.y)-(b.x, b.y), &hffffff
-                    line(b.x, b.y)-(c.x, c.y), &hffffff
-                    line(c.x, c.y)-(a.x, a.y), &hffffff
+                    line(a.x, a.y)-(b.x, b.y), colr
+                    line(b.x, b.y)-(c.x, c.y), colr
+                    line(c.x, c.y)-(a.x, a.y), colr
                 end if
             end if
         next j
     next i
 end sub
 
-sub renderParticles(particles() as ParticleType, camera as CameraType)
+sub renderParticles(particles() as ParticleType, camera as CFrame3)
     for i as integer = 0 to ubound(particles)
         dim as ParticleType particle = particles(i)
         dim as Vector3 vp = vertexToView(particle.position, camera)
@@ -382,7 +360,7 @@ sub printStringBlock(row as integer, col as integer, text as string, header as s
     end if
 end sub
 
-function getOrientationStats(camera as CameraType) as string
+function getOrientationStats(camera as CFrame3) as string
     dim as string axisNames(2) = {"X", "Y", "Z"}
     dim as string stats(3, 3)
     for i as integer = 0 to 2
@@ -408,19 +386,58 @@ function getOrientationStats(camera as CameraType) as string
     return body
 end function
 
-dim as double rotateSpeed = 50
+sub renderUI(mouse as Mouse2, reticleColor as integer = &h808080, arrowColor as integer = &hd0b000)
+    dim as Vector2 m = type(mouse.x, mouse.y)
+    '- draw center circle
+    dim as double fr = 0.11
+    dim as double stp = PI/3
+    dim as double start = atan2(m.y, m.x)
+    if start < 0 then start += 2*PI
+    for rad as double = start-2*PI-stp/4 to 2*PI step stp
+        if rad >= 0 then
+            circle(0, 0), fr, reticleColor, rad, rad+stp/2
+        end if
+    next rad
+    '- draw directionol arrow
+    dim as double sz
+    dim as integer colr = arrowColor
+    dim as Vector2 a, b
+    if mouse.buttons > 0 then
+        sz = fr/4
+        a = m.unit*fr*1.15
+        b = a.unit.toLeft()*sz
+        line(a.x, a.y)-step(b.x, b.y), colr
+        b = b.unit.toRight().rotate(radians(-30))*sz*2
+        line -step(b.x, b.y), colr
+        b = b.unit.rotate(radians(-120))*sz*2
+        line -step(b.x, b.y), colr
+        b = b.unit.rotate(radians(-120))*sz
+        line -step(b.x, b.y), colr
+    end if
+
+    '- draw mouse cursor
+    dim as ulong ants = &b11000011110000111100001111000011 shr int(frac(timer*1.5)*16)
+    a = m
+    sz = 0.076
+    b = Vector2(radians(-75))*sz
+    line(a.x, a.y)-step(b.x, b.y), &hf0f0f0, , ants
+    b = b.rotate(radians(105))*0.8
+    line -step(b.x, b.y), &hf0f0f0, , ants
+    line -(a.x, a.y), &hf0f0f0, , ants
+end sub
+
+dim as double rotateSpeed = 1
 dim as double translateSpeed = 15
-dim as double shiftBoost = 3
-dim as double ctrlBoost = 1/5
+dim as double shiftBoost = 2
 screenset 1, 0
 
 dim as double frameTimeStart = 0
 dim as double frameTimeEnd   = 0
 
-dim as boolean mouseReady = false
-dim as Vector3 deltas
+dim as Vector3 movement, targetMovement
+dim as Vector3 rotation, targetRotation
 
-setmouse , , 0
+setmouse pmap(0, 0), pmap(0, 1)
 while true
     if multikey(SC_ESCAPE) then
         exit while
@@ -432,165 +449,68 @@ while true
 
     dim as string s = getOrientationStats(camera)
     printStringBlock(1, 1, s, "ORIENTATION", "_")
-    
 
-    dim as integer mx, my, mb
-    dim as double fr = 0.11
-    dim as Vector2 vm
-    
-    'if mouseReady then
-        getmouse mx, my, , mb
-        
-        vm.x = pmap(mx, 2)
-        vm.y = pmap(my, 3)
-        dim as double stp = PI/3
-        dim as double start = atan2(vm.y, vm.x)
-        if start < 0 then start += 2*PI
-        for rad as double = start-2*PI-stp/4 to 2*PI step stp
-            if rad >= 0 then
-                circle(0, 0), fr, &h808080, rad, rad+stp/2
-            end if
-        next rad
-        dim as double sz
-        dim as integer colr = &hd0b000
-        dim as Vector2 o, p
-        if mb > 0 then
-            sz = iif(vm.length() <= 1, vm.length(), 1)
-            sz = 0.02 + sz/60
-            o = vm.unit()*fr*1.15
-            p = o.unit().toLeft()*sz
-            line(o.x, o.y)-step(p.x, p.y), colr
-            p = p.unit().toRight().rotate(radians(-30))*sz*2
-            line -step(p.x, p.y), colr
-            p = p.unit().rotate(radians(-120))*sz*2 '-p.unit()*sz*2
-            line -step(p.x, p.y), colr
-            p = p.unit().rotate(radians(-120))*sz
-            line -step(p.x, p.y), colr
-        end if
-        
-        dim as ulong ants = &b11000011110000111100001111000011 shr int(frac(timer*1.5)*16)
-        
-        o = vm
-        sz = 0.076
-        p = Vector2(radians(-75))*sz
-        line(o.x, o.y)-step(p.x, p.y), &hf0f0f0, , ants
-        p = p.rotate(radians(105))*0.8
-        line -step(p.x, p.y), &hf0f0f0, , ants
-        line -(o.x, o.y), &hf0f0f0, , ants
-        dim as double e = vm.length()
-        if e > 1 then
-            vm = vm.unit()
-            e = 1
-        end if
-        vm *= sin(e * 0.5 * PI) * 100
-        if mb and 1 then
-            deltas.y = vm.x
-            deltas.x = vm.y
-        elseif mb and 2 then
-            deltas.z = vm.x
-            deltas.x = vm.y
-        else
-            deltas.x *= 0.9
-            deltas.y *= 0.9
-            deltas.z *= 0.9
-        end if
-    'end if
-    'screensync
+    mouse.update
+    renderUI mouse
+
     screencopy 1, 0
-    dim as double delta = timer - frameTimeStart
-    dim as double deltaRotate = delta * rotateSpeed
-    dim as double deltaTranslate = delta * translateSpeed
+    dim as double deltaTime = timer - frameTimeStart
+    dim as double deltaRotate = deltaTime * rotateSpeed
+    dim as double deltaTranslate = deltaTime * translateSpeed
     frameTimeStart = timer
 
     if multikey(SC_LSHIFT) or multikey(SC_RSHIFT) then
         deltaRotate *= shiftBoost
         deltaTranslate *= shiftBoost
     end if
+
+    targetMovement = Vector3(0, 0, 0)
+    targetRotation = Vector3(0, 0, 0)
+
+    if mouse.leftDown then
+        targetRotation.y -= mouse.x
+        targetRotation.x -= mouse.y
+    end if
+    if mouse.middleDown then
+        targetMovement.x += mouse.x
+        targetMovement.y += mouse.y
+    elseif mouse.rightDown then
+        dim as Vector2 m = type(mouse.x, mouse.y)
+        m = m.rotate(atan2(targetRotation.z, targetRotation.x))
+        targetRotation.x -= mouse.y
+        targetRotation.z -= mouse.x
+    end if
+
+    if multikey(SC_D) then targetMovement.x += 1
+    if multikey(SC_A) then targetMovement.x -= 1
+    if multikey(SC_Q) then targetMovement.y += 1
+    if multikey(SC_Z) then targetMovement.y -= 1
+    if multikey(SC_W) then targetMovement.z += 1
+    if multikey(SC_S) then targetMovement.z -= 1
+
+    if multikey(SC_UP   ) then targetRotation.x -= 1
+    if multikey(SC_DOWN ) then targetRotation.x += 1
+    if multikey(SC_RIGHT) then targetRotation.y -= 1
+    if multikey(SC_LEFT ) then targetRotation.y += 1
     if multikey(SC_CONTROL) then
-        deltaRotate *= ctrlBoost
-        deltaTranslate *= ctrlBoost
+        if multikey(SC_RIGHT) then targetRotation.z -= 1
+        if multikey(SC_LEFT ) then targetRotation.z += 1
     end if
 
-    if multikey(SC_A) then
-        camera.position -= camera.orientation(AXIS_X) * deltaTranslate
-    elseif multikey(SC_D) then
-        camera.position += camera.orientation(AXIS_X) * deltaTranslate
-    elseif multikey(SC_W) then
-        camera.position += camera.orientation(AXIS_Z) * deltaTranslate
-    elseif multikey(SC_S) then
-        camera.position -= camera.orientation(AXIS_Z) * deltaTranslate
-    elseif multikey(SC_Q) then
-        camera.position += camera.orientation(AXIS_Y) * deltaTranslate
-    elseif multikey(SC_Z) then
-        camera.position -= camera.orientation(AXIS_Y) * deltaTranslate
-    end if
+    targetMovement = (_
+        + targetMovement.x * camera.vRight   _
+        + targetMovement.y * camera.vUp      _
+        + targetMovement.z * camera.vForward _
+    ) * deltaTranslate
 
-    dim as double turnDelta = 0
-    if not multikey(SC_CONTROL) then
-        if multikey(SC_RIGHT) then
-            turnDelta = -deltaRotate
-        elseif multikey(SC_LEFT) then
-            turnDelta =  deltaRotate
-        end if
-    end if
-    if deltas.y <> 0 then
-        turnDelta += -deltas.y * delta
-    end if
-    if turnDelta <> 0 then
-        dim as Vector3 vR = camera.orientation(AXIS_X)
-        dim as Vector3 vU = camera.orientation(AXIS_Y)
-        dim as Vector3 vF = camera.orientation(AXIS_Z)
-        dim as Vector3 z1 = vector3_rotate(baseOrientation(AXIS_Z), radians(turnDelta), PLANE_XZ)
-        dim as Vector3 x1 = vector3_rotate(baseOrientation(AXIS_X), radians(turnDelta), PLANE_XZ)
-        dim as Vector3 y1 = vector3_cross(z1, x1)
-        camera.orientation(AXIS_Z) = (vR*z1.x + vU*z1.y + vF*z1.z).unit()
-        camera.orientation(AXIS_X) = (vR*x1.x + vU*x1.y + vF*x1.z).unit()
-        camera.orientation(AXIS_Y) = (vR*y1.x + vU*y1.y + vF*y1.z).unit()
-    end if
-
-    turnDelta = 0
-    if multikey(SC_CONTROL) then
-        if multikey(SC_RIGHT) then
-            turnDelta = -deltaRotate
-        elseif multikey(SC_LEFT) then
-            turnDelta =  deltaRotate
-        end if
-    end if
-    if deltas.z <> 0 then
-        turnDelta += -deltas.z * delta
-    end if
-    if turnDelta <> 0 then
-        dim as Vector3 vR = camera.orientation(AXIS_X)
-        dim as Vector3 vU = camera.orientation(AXIS_Y)
-        dim as Vector3 vF = camera.orientation(AXIS_Z)
-        dim as Vector3 x1 = vector3_rotate(baseOrientation(AXIS_X), radians(turnDelta), PLANE_XY)
-        dim as Vector3 y1 = vector3_rotate(baseOrientation(AXIS_Y), radians(turnDelta), PLANE_XY)
-        dim as Vector3 z1 = vector3_cross(x1, y1)
-        camera.orientation(AXIS_X) = (vR*x1.x + vU*x1.y + vF*x1.z).unit()
-        camera.orientation(AXIS_Y) = (vR*y1.x + vU*y1.y + vF*y1.z).unit()
-        camera.orientation(AXIS_Z) = (vR*z1.x + vU*z1.y + vF*z1.z).unit()
-    end if
-
-    turnDelta = 0
-    if multikey(SC_UP) then
-        turnDelta = -deltaRotate
-    elseif multikey(SC_DOWN) then
-        turnDelta =  deltaRotate
-    end if
-    if deltas.x <> 0 then
-        turnDelta += -deltas.x * delta
-    end if
-    if turnDelta <> 0 then
-        dim as Vector3 vR = camera.orientation(AXIS_X)
-        dim as Vector3 vU = camera.orientation(AXIS_Y)
-        dim as Vector3 vF = camera.orientation(AXIS_Z)
-        dim as Vector3 y1 = vector3_rotate(baseOrientation(AXIS_Y), radians(turnDelta), PLANE_YZ)
-        dim as Vector3 z1 = vector3_rotate(baseOrientation(AXIS_Z), radians(turnDelta), PLANE_YZ)
-        dim as Vector3 x1 = vector3_cross(y1, z1)
-        camera.orientation(AXIS_Y) = (vR*y1.x + vU*y1.y + vF*y1.z).unit()
-        camera.orientation(AXIS_Z) = (vR*z1.x + vU*z1.y + vF*z1.z).unit()
-        camera.orientation(AXIS_X) = (vR*x1.x + vU*x1.y + vF*x1.z).unit()
-    end if
+    targetRotation *= deltaRotate
+    
+    if targetMovement.length > 1 then targetMovement = targetMovement.unit
+    if targetRotation.length > 1 then targetRotation = targetRotation.unit
+    movement = movement.lerp(targetMovement, deltaTime)
+    rotation = rotation.lerp(targetRotation, deltaTime)
+    camera += movement
+    camera.orientation = camera.orientation.rotate(rotation)
 wend
 setmouse , , 1
 end
@@ -601,14 +521,14 @@ end
 data 9
 data "cube"
 data "s",  10
-data "v",  1.000000,  1.000000, -1.000000
-data "v",  1.000000, -1.000000, -1.000000
-data "v",  1.000000,  1.000000,  1.000000
-data "v",  1.000000, -1.000000,  1.000000
-data "v", -1.000000,  1.000000, -1.000000
-data "v", -1.000000, -1.000000, -1.000000
-data "v", -1.000000,  1.000000,  1.000000
-data "v", -1.000000, -1.000000,  1.000000
+data "v",  1,  1, -1
+data "v",  1, -1, -1
+data "v",  1,  1,  1
+data "v",  1, -1,  1
+data "v", -1,  1, -1
+data "v", -1, -1, -1
+data "v", -1,  1,  1
+data "v", -1, -1,  1
 data "f", 5, 3, 1
 data "f", 3, 8, 4
 data "f", 7, 6, 8
@@ -621,4 +541,171 @@ data "f", 7, 5, 6
 data "f", 2, 4, 8
 data "f", 1, 3, 4
 data "f", 5, 1, 2
+data "end"
+
+data "spaceship"
+data "v", 2.000000, 0.250000, -1.000000
+data "v", 1.500000, 1.500000, 4.000000
+data "v", 1.500000, 0.500000, 4.000000
+data "v", -1.945922, 0.977856, -0.996525
+data "v", -2.000000, 0.250000, -1.000000
+data "v", -1.500000, 1.500000, 4.000000
+data "v", -1.500000, 0.500000, 4.000000
+data "v", 1.000000, -0.500000, -3.000000
+data "v", -1.000000, -0.500000, -3.000000
+data "v", 1.000000, 0.000000, -3.000000
+data "v", -1.000000, 0.000000, -3.000000
+data "v", -4.000000, 0.250000, 0.500000
+data "v", -4.000000, 0.250000, 2.000000
+data "v", -4.000000, 0.750000, 2.000000
+data "v", -4.000000, 0.750000, 0.500000
+data "v", 4.000000, 0.750000, 0.500000
+data "v", 4.000000, 0.250000, 0.500000
+data "v", 4.000000, 0.750000, 2.000000
+data "v", 4.000000, 0.250000, 2.000000
+data "v", -1.500000, 0.000000, 1.000000
+data "v", 0.000000, -0.500000, -1.000000
+data "v", 1.500000, 0.000000, 1.000000
+data "v", 0.000000, 0.000000, 2.741200
+data "v", -2.518813, -0.022215, 0.676867
+data "v", 2.518813, -0.022215, 0.676867
+data "v", 0.000000, 2.500000, 3.000000
+data "v", -1.743595, 1.497457, 0.907487
+data "v", 0.000000, 1.250000, -2.000000
+data "v", -0.000000, 2.232334, 4.925400
+data "v", -1.000000, 0.500000, 5.250000
+data "v", -1.500000, 1.000000, 5.250000
+data "v", 1.500000, 1.000000, 5.250000
+data "v", 0.000000, 0.500000, 4.500000
+data "v", -1.000000, 1.000000, 6.000000
+data "v", 1.000000, 1.000000, 6.000000
+data "v", 0.000000, 1.750000, 6.000000
+data "v", 0.008196, 0.035187, 6.063925
+data "v", 0.000000, 0.770043, 7.525838
+data "v", -0.000000, 0.216650, 6.688897
+data "v", -1.250000, 1.187500, 7.500000
+data "v", 1.250000, 1.187500, 7.500000
+data "v", -0.662020, 2.007978, 3.233271
+data "v", -1.000000, 2.000000, 5.000000
+data "v", -0.500000, 1.750000, 6.000000
+data "v", -0.625000, 1.562500, 7.500000
+data "v", 0.649679, 2.014331, 3.264472
+data "v", 1.000000, 2.000000, 5.000000
+data "v", 0.500000, 1.750000, 6.000000
+data "v", 0.625000, 1.562500, 7.500000
+data "v", 1.945922, 0.977856, -0.996525
+data "v", 1.740592, 1.499280, 0.911932
+data "v", 0.000000, 2.035285, 0.170850
+data "v", -1.085742, 2.120719, 1.742460
+data "v", 1.140913, 2.077799, 1.634414
+data "v", 0.375000, 2.500000, 2.000000
+data "v", -0.375000, 2.500000, 2.000000
+data "f", 6, 53, 27
+data "f", 3, 22, 25
+data "f", 3, 18, 2
+data "f", 1, 10, 50
+data "f", 11, 8, 9
+data "f", 5, 11, 9
+data "f", 21, 9, 8
+data "f", 28, 10, 11
+data "f", 14, 12, 13
+data "f", 27, 15, 14
+data "f", 5, 15, 4
+data "f", 7, 14, 13
+data "f", 16, 19, 17
+data "f", 1, 16, 17
+data "f", 51, 18, 16
+data "f", 20, 23, 7
+data "f", 21, 20, 5
+data "f", 21, 22, 23
+data "f", 8, 1, 21
+data "f", 21, 5, 9
+data "f", 5, 20, 24
+data "f", 20, 7, 24
+data "f", 7, 13, 24
+data "f", 13, 12, 24
+data "f", 12, 5, 24
+data "f", 22, 1, 25
+data "f", 1, 17, 25
+data "f", 17, 19, 25
+data "f", 19, 3, 25
+data "f", 26, 55, 56
+data "f", 28, 51, 50
+data "f", 28, 27, 52
+data "f", 46, 29, 47
+data "f", 3, 33, 23
+data "f", 47, 32, 2
+data "f", 30, 37, 34
+data "f", 43, 34, 44
+data "f", 30, 34, 31
+data "f", 29, 48, 47
+data "f", 40, 38, 45
+data "f", 36, 49, 48
+data "f", 34, 39, 40
+data "f", 34, 45, 44
+data "f", 38, 39, 41
+data "f", 36, 45, 38
+data "f", 29, 44, 36
+data "f", 42, 29, 26
+data "f", 35, 49, 41
+data "f", 47, 35, 32
+data "f", 52, 53, 56
+data "f", 2, 54, 46
+data "f", 28, 4, 27
+data "f", 28, 52, 51
+data "f", 14, 6, 27
+data "f", 51, 2, 18
+data "f", 11, 4, 28
+data "f", 50, 10, 28
+data "f", 51, 52, 54
+data "f", 54, 55, 46
+data "f", 54, 52, 55
+data "f", 56, 53, 42
+data "f", 52, 27, 53
+data "f", 39, 38, 40
+data "f", 32, 3, 2
+data "f", 7, 31, 6
+data "f", 42, 6, 43
+data "f", 33, 7, 23
+data "f", 52, 56, 55
+data "f", 26, 56, 42
+data "f", 6, 42, 53
+data "f", 22, 3, 23
+data "f", 3, 19, 18
+data "f", 1, 8, 10
+data "f", 11, 10, 8
+data "f", 5, 4, 11
+data "f", 14, 15, 12
+data "f", 5, 12, 15
+data "f", 7, 6, 14
+data "f", 16, 18, 19
+data "f", 1, 50, 16
+data "f", 21, 23, 20
+data "f", 21, 1, 22
+data "f", 26, 46, 55
+data "f", 3, 37, 33
+data "f", 46, 26, 29
+data "f", 46, 47, 2
+data "f", 30, 33, 37
+data "f", 43, 31, 34
+data "f", 29, 36, 48
+data "f", 37, 32, 35
+data "f", 35, 41, 39
+data "f", 39, 34, 37
+data "f", 37, 35, 39
+data "f", 36, 38, 49
+data "f", 34, 40, 45
+data "f", 41, 49, 38
+data "f", 36, 44, 45
+data "f", 29, 43, 44
+data "f", 42, 43, 29
+data "f", 35, 48, 49
+data "f", 47, 48, 35
+data "f", 2, 51, 54
+data "f", 27, 4, 15
+data "f", 16, 50, 51
+data "f", 32, 37, 3
+data "f", 7, 30, 31
+data "f", 6, 31, 43
+data "f", 33, 30, 7
 data "end"

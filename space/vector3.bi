@@ -4,15 +4,12 @@ type Vector3
     z as double
     declare constructor()
     declare constructor(x as double, y as double, z as double)
-    declare operator += (a as Vector3)
-    declare operator -= (a as Vector3)
-    declare operator *= (d as double)
-    declare operator /= (d as double)
+    declare property length as double
+    declare property unit as Vector3
     declare function cross(b as Vector3) as Vector3
     declare function dot(b as Vector3) as double
-    declare function length() as double
+    declare function lerp(goal as Vector3, a as double=0.5) as Vector3
     declare function rotate(radians as double, axis as integer = 2) as Vector3
-    declare function unit() as Vector3
 end type
 constructor Vector3
 end constructor
@@ -27,11 +24,29 @@ end operator
 operator + (a as Vector3, b as Vector3) as Vector3
     return Vector3(a.x+b.x, a.y+b.y, a.z+b.z)
 end operator
+operator + (a as Vector3, b as double) as Vector3
+    return Vector3(a.x+b, a.y+b, a.z+b)
+end operator
+operator + (a as double, b as Vector3) as Vector3
+    return b + a
+end operator
 operator - (a as Vector3, b as Vector3) as Vector3
     return a + -b
 end operator
+operator - (a as Vector3, b as double) as Vector3
+    return a + -b
+end operator
+operator * (a as Vector3, b as Vector3) as Vector3
+    return Vector3(a.x*b.x, a.y*b.y, a.z*b.z)
+end operator
 operator * (a as Vector3, b as double) as Vector3
     return Vector3(a.x*b, a.y*b, a.z*b)
+end operator
+operator * (a as double, b as Vector3) as Vector3
+    return b * a
+end operator
+operator / (a as Vector3, b as Vector3) as Vector3
+    return Vector3(a.x/b.x, a.y/b.y, a.z/b.z)
 end operator
 operator / (a as Vector3, b as double) as Vector3
     return Vector3(a.x/b, a.y/b, a.z/b)
@@ -70,30 +85,30 @@ function vector3_unit(a as Vector3) as Vector3
     dim m as double = vector3_length(a)
     return Vector3(a.x/m, a.y/m, a.z/m)
 end function
-operator Vector3.+= (b as Vector3)
-    this = this + b
-end operator
-operator Vector3.-= (b as Vector3)
-    this = this - b
-end operator
-operator Vector3.*= (d as double)
-    this = this * d
-end operator
-operator Vector3./= (d as double)
-    this = this / d
-end operator
+property Vector3.length as double
+    return vector3_length(this)
+end property
+function vector3_lerp(from as Vector3, goal as Vector3, a as double = 0.5) as Vector3
+    a = iif(a < 0, 0, iif(a > 1, 1, a))
+    a = 1 - exp(-4.0 * a)
+    return Vector3(_
+        from.x + (goal.x - from.x) * a,_
+        from.y + (goal.y - from.y) * a,_
+        from.z + (goal.z - from.z) * a _
+    )
+end function
+property Vector3.unit as Vector3
+    return vector3_unit(this)
+end property
 function Vector3.cross(b as Vector3) as Vector3
     return vector3_cross(this, b)
 end function
 function Vector3.dot(b as Vector3) as double
     return vector3_dot(this, b)
 end function
-function Vector3.length() as double
-    return vector3_length(this)
+function Vector3.lerp(goal as Vector3, a as double=0.5) as Vector3
+    return vector3_lerp(this, goal, a)
 end function
 function Vector3.rotate(radians as double, axis as integer = 2) as Vector3
     return vector3_rotate(this, radians, axis)
-end function
-function Vector3.unit() as Vector3
-    return vector3_unit(this)
 end function
