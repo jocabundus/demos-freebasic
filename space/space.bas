@@ -37,10 +37,9 @@ type Face3
     vertexIndexes(2) as integer
     normal as Vector3
 end type
-type Object3
+type Object3 extends CFrame3
     sid as string
-    position as Vector3
-    orientation(0 to 2) as Vector3
+    velocity as Vector3
     vertexes(any) as Vector3
     normals(any) as Vector3
     faces(any) as Face3
@@ -89,16 +88,27 @@ function object_read(sid as string) as Object3
     wend
     return o
 end function
-function object_collection_add(sid as string, collection() as Object3) as Object3
+function object_center(o as Object3) as Object3
+    dim as Vector3 average
+    for i as integer = 0 to ubound(o.vertexes)
+        average += o.vertexes(i)
+    next i
+    average /= ubound(o.vertexes)
+    for i as integer = 0 to ubound(o.vertexes)
+        o.vertexes(i) -= average
+    next i
+    return o
+end function
+function object_collection_add(sid as string, collection() as Object3) as Object3 ptr
     dim o as Object3 = object_read(sid)
     if o.sid = sid then
         dim as integer n = ubound(collection)
         redim preserve collection(n+1)
-        collection(n+1) = o
+        collection(n+1) = object_center(o)
+        return @collection(n+1)
     else
         error -2
     end if
-    return o
 end function
 
 '=======================================================================
@@ -141,20 +151,6 @@ constructor ParticleType (position as Vector3, color3 as integer)
     this.position = position
     this.color3 = color3
 end constructor
-
-'=======================================================================
-'= START
-'=======================================================================
-randomize 'SEED
-window (-SCREEN_ASPECT_X, 1)-(SCREEN_ASPECT_X, -1)
-
-dim as Mouse2 mouse
-mouse.hide()
-mouse.setMode(Mouse2Mode.Viewport)
-
-dim as CFrame3 camera
-dim as Object3 objectCollection(any)
-object_collection_add("spaceship", objectCollection())
 
 type PointLight
     position as Vector2
@@ -244,7 +240,7 @@ sub renderObjects(objects() as Object3, camera as CFrame3)
             dim as Face3 face = o.faces(j)
             for k as integer = 0 to 2
                 dim as integer index = face.vertexIndexes(k)
-                dim as Vector3 vertex = o.vertexes(index)
+                dim as Vector3 vertex = o.vertexes(index) + o.position
                 dim as Vector3 vewtex = vertexToView(vertex, camera)
                 if k = 0 then
                     surfaceCos = vector3_dot(face.normal, Vector3(0, 1, 0))
@@ -405,9 +401,9 @@ sub renderUI(mouse as Mouse2, reticleColor as integer = &h808080, arrowColor as 
     if mouse.buttons > 0 then
         sz = fr/4
         a = m.unit*fr*1.15
-        b = a.unit.toLeft()*sz
+        b = a.unit.port*sz
         line(a.x, a.y)-step(b.x, b.y), colr
-        b = b.unit.toRight().rotate(radians(-30))*sz*2
+        b = b.unit.starboard.rotate(radians(-30))*sz*2
         line -step(b.x, b.y), colr
         b = b.unit.rotate(radians(-120))*sz*2
         line -step(b.x, b.y), colr
@@ -426,6 +422,24 @@ sub renderUI(mouse as Mouse2, reticleColor as integer = &h808080, arrowColor as 
     line -(a.x, a.y), &hf0f0f0, , ants
 end sub
 
+'=======================================================================
+'= START
+'=======================================================================
+randomize 'SEED
+window (-SCREEN_ASPECT_X, 1)-(SCREEN_ASPECT_X, -1)
+
+dim as Mouse2 mouse
+mouse.hide()
+mouse.setMode(Mouse2Mode.Viewport)
+
+dim as CFrame3 camera
+dim as Object3 objectCollection(any)
+dim as Object3 ptr spaceship = object_collection_add("spaceship", objectCollection())
+dim as Object3 ptr controlObject, focusObject
+
+controlObject = spaceship
+focusObject = spaceship
+
 dim as double rotateSpeed = 1
 dim as double translateSpeed = 15
 dim as double shiftBoost = 2
@@ -436,6 +450,10 @@ dim as double frameTimeEnd   = 0
 
 dim as Vector3 movement, targetMovement
 dim as Vector3 rotation, targetRotation
+dim as CFrame3 targetCamera
+
+dim as Vector3 targetVelocity
+dim as Orientation3 targetOrientation
 
 setmouse pmap(0, 0), pmap(0, 1)
 while true
@@ -453,6 +471,8 @@ while true
     mouse.update
     renderUI mouse
 
+    dim as Object3 focus = *focusObject
+    
     screencopy 1, 0
     dim as double deltaTime = timer - frameTimeStart
     dim as double deltaRotate = deltaTime * rotateSpeed
@@ -466,6 +486,23 @@ while true
 
     targetMovement = Vector3(0, 0, 0)
     targetRotation = Vector3(0, 0, 0)
+
+    
+    targetCamera = (focus - focus.vForward * 12 + focus.vUp * 3) '->rotate(camera)
+
+    if multikey(SC_W) then targetVelocity =  translateSpeed * focus.vForward
+    if multikey(SC_S) then targetVelocity = -translateSpeed * focus.vForward
+    if multikey(SC_LEFT ) then targetOrientation = focus.orientation.rotate(Vector3(0, 0,  radians(10)))
+    if multikey(SC_RIGHT) then targetOrientation = focus.orientation.rotate(Vector3(0, 0, -radians(10)))
+    if multikey(SC_UP   ) then targetOrientation = focus.orientation.rotate(Vector3( radians(10), 0, 0))
+    if multikey(SC_DOWN ) then targetOrientation = focus.orientation.rotate(Vector3(-radians(10), 0, 0))
+
+    focus.velocity = focus.velocity.lerp(targetVelocity, deltaTime)
+    focus.position = focus.position + focus.velocity * deltaTime
+
+    focus.orientation = focus.orientation.lerp(targetOrientation, deltaTime)
+
+    *focusObject = focus
 
     if mouse.leftDown then
         targetRotation.y -= mouse.x
@@ -481,27 +518,27 @@ while true
         targetRotation.z -= mouse.x
     end if
 
-    if multikey(SC_D) then targetMovement.x += 1
-    if multikey(SC_A) then targetMovement.x -= 1
-    if multikey(SC_Q) then targetMovement.y += 1
-    if multikey(SC_Z) then targetMovement.y -= 1
-    if multikey(SC_W) then targetMovement.z += 1
-    if multikey(SC_S) then targetMovement.z -= 1
+    '~ if multikey(SC_D) then targetMovement.x += 1
+    '~ if multikey(SC_A) then targetMovement.x -= 1
+    '~ if multikey(SC_Q) then targetMovement.y += 1
+    '~ if multikey(SC_Z) then targetMovement.y -= 1
+    '~ if multikey(SC_W) then targetMovement.z += 1
+    '~ if multikey(SC_S) then targetMovement.z -= 1
 
-    if multikey(SC_UP   ) then targetRotation.x -= 1
-    if multikey(SC_DOWN ) then targetRotation.x += 1
-    if multikey(SC_RIGHT) then targetRotation.y -= 1
-    if multikey(SC_LEFT ) then targetRotation.y += 1
-    if multikey(SC_CONTROL) then
-        if multikey(SC_RIGHT) then targetRotation.z -= 1
-        if multikey(SC_LEFT ) then targetRotation.z += 1
-    end if
+    '~ if multikey(SC_UP   ) then targetRotation.x -= 1
+    '~ if multikey(SC_DOWN ) then targetRotation.x += 1
+    '~ if multikey(SC_RIGHT) then targetRotation.y -= 1
+    '~ if multikey(SC_LEFT ) then targetRotation.y += 1
+    '~ if multikey(SC_CONTROL) then
+        '~ if multikey(SC_RIGHT) then targetRotation.z -= 1
+        '~ if multikey(SC_LEFT ) then targetRotation.z += 1
+    '~ end if
 
-    targetMovement = (_
-        + targetMovement.x * camera.vRight   _
-        + targetMovement.y * camera.vUp      _
-        + targetMovement.z * camera.vForward _
-    ) * deltaTranslate
+    '~ targetMovement = (_
+        '~ + targetMovement.x * camera.vRight   _
+        '~ + targetMovement.y * camera.vUp      _
+        '~ + targetMovement.z * camera.vForward _
+    '~ ) * deltaTranslate
 
     targetRotation *= deltaRotate
     
@@ -509,8 +546,9 @@ while true
     if targetRotation.length > 1 then targetRotation = targetRotation.unit
     movement = movement.lerp(targetMovement, deltaTime)
     rotation = rotation.lerp(targetRotation, deltaTime)
-    camera += movement
+    'camera += movement
     camera.orientation = camera.orientation.rotate(rotation)
+    camera = camera.lerp(targetCamera, deltaTime)
 wend
 setmouse , , 1
 end

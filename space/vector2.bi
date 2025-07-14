@@ -5,13 +5,13 @@ type Vector2
     declare constructor(x as double, y as double)
     declare constructor(radians as double)
     declare property length as double
+    declare property port as Vector2
+    declare property starboard as Vector2
     declare property unit as Vector2
     declare function cross(b as Vector2) as double
     declare function dot(b as Vector2) as double
     declare function lerp(goal as Vector2, a as double=0.5) as Vector2
     declare function rotate(radians as double) as Vector2
-    declare function toLeft() as Vector2
-    declare function toRight() as Vector2
 end type
 constructor Vector2
 end constructor
@@ -23,14 +23,17 @@ constructor Vector2(radians as double)
     this.x = cos(radians)
     this.y = sin(radians)
 end constructor
+operator abs (a as Vector2) as Vector2
+    return type(abs(a.x), abs(a.y))
+end operator
 operator - (a as Vector2) as Vector2
-    return Vector2(-a.x, -a.y)
+    return type(-a.x, -a.y)
 end operator
 operator + (a as Vector2, b as Vector2) as Vector2
-    return Vector2(a.x+b.x, a.y+b.y)
+    return type(a.x+b.x, a.y+b.y)
 end operator
 operator + (a as Vector2, b as double) as Vector2
-    return Vector2(a.x+b, a.y+b)
+    return type(a.x+b, a.y+b)
 end operator
 operator + (a as double, b as Vector2) as Vector2
     return b + a
@@ -42,19 +45,19 @@ operator - (a as Vector2, b as double) as Vector2
     return a + -b
 end operator
 operator * (a as Vector2, b as Vector2) as Vector2
-    return Vector2(a.x*b.x, a.y*b.y)
+    return type(a.x*b.x, a.y*b.y)
 end operator
 operator * (a as Vector2, b as double) as Vector2
-    return Vector2(a.x*b, a.y*b)
+    return type(a.x*b, a.y*b)
 end operator
 operator * (a as double, b as Vector2) as Vector2
     return b * a
 end operator
 operator / (a as Vector2, b as Vector2) as Vector2
-    return Vector2(a.x/b.x, a.y/b.y)
+    return type(a.x/b.x, a.y/b.y)
 end operator
 operator / (a as Vector2, b as double) as Vector2
-    return Vector2(a.x/b, a.y/b)
+    return type(a.x/b, a.y/b)
 end operator
 function vector2_cross(a as Vector2, b as Vector2) as double
     return a.x*b.y - a.y*b.x
@@ -68,7 +71,7 @@ end function
 function vector2_lerp(from as Vector2, goal as Vector2, a as double = 0.5) as Vector2
     a = iif(a < 0, 0, iif(a > 1, 1, a))
     a = 1 - exp(-4.0 * a)
-    return Vector2(_
+    return type(_
         from.x + (goal.x - from.x) * a,_
         from.y + (goal.y - from.y) * a _
     )
@@ -76,25 +79,31 @@ end function
 function vector2_rotate(a as Vector2, radians as double) as Vector2
     dim as double rcos = cos(radians)
     dim as double rsin = sin(radians)
-    return Vector2(_
+    return type(_
         a.x*rcos + a.y*-rsin,_
         a.x*rsin + a.y* rcos _
     )
 end function
 function vector2_to_left(a as Vector2) as Vector2
-    return Vector2(-a.y, a.x)
+    return type(-a.y, a.x)
 end function
 function vector2_to_right(a as Vector2) as Vector2
-    return Vector2(a.y, -a.x)
+    return type(a.y, -a.x)
 end function
 function vector2_unit(a as Vector2) as Vector2
     dim m as double = vector2_length(a)
-    return Vector2(a.x/m, a.y/m)
+    return type(a.x/m, a.y/m)
 end function
-property Vector2.length() as double
+property Vector2.port as Vector2
+    return vector2_to_left(this)
+end property
+property Vector2.starboard as Vector2
+    return vector2_to_right(this)
+end property
+property Vector2.length as double
     return Vector2_length(this)
 end property
-property Vector2.unit() as Vector2
+property Vector2.unit as Vector2
     return vector2_unit(this)
 end property
 function Vector2.cross(b as Vector2) as double
@@ -108,10 +117,4 @@ function Vector2.lerp(goal as Vector2, a as double=0.5) as Vector2
 end function
 function Vector2.rotate(radians as double) as Vector2
     return Vector2_rotate(this, radians)
-end function
-function Vector2.toLeft() as Vector2
-    return vector2_to_left(this)
-end function
-function Vector2.toRight() as Vector2
-    return vector2_to_right(this)
 end function

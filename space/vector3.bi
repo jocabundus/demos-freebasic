@@ -18,14 +18,17 @@ constructor Vector3(x as double, y as double, z as double)
     this.y = y
     this.z = z
 end constructor
+operator abs (a as Vector3) as Vector3
+    return type(abs(a.x), abs(a.y), abs(a.z))
+end operator
 operator - (a as Vector3) as Vector3
-    return Vector3(-a.x, -a.y, -a.z)
+    return type(-a.x, -a.y, -a.z)
 end operator
 operator + (a as Vector3, b as Vector3) as Vector3
-    return Vector3(a.x+b.x, a.y+b.y, a.z+b.z)
+    return type(a.x+b.x, a.y+b.y, a.z+b.z)
 end operator
 operator + (a as Vector3, b as double) as Vector3
-    return Vector3(a.x+b, a.y+b, a.z+b)
+    return type(a.x+b, a.y+b, a.z+b)
 end operator
 operator + (a as double, b as Vector3) as Vector3
     return b + a
@@ -37,22 +40,22 @@ operator - (a as Vector3, b as double) as Vector3
     return a + -b
 end operator
 operator * (a as Vector3, b as Vector3) as Vector3
-    return Vector3(a.x*b.x, a.y*b.y, a.z*b.z)
+    return type(a.x*b.x, a.y*b.y, a.z*b.z)
 end operator
 operator * (a as Vector3, b as double) as Vector3
-    return Vector3(a.x*b, a.y*b, a.z*b)
+    return type(a.x*b, a.y*b, a.z*b)
 end operator
 operator * (a as double, b as Vector3) as Vector3
     return b * a
 end operator
 operator / (a as Vector3, b as Vector3) as Vector3
-    return Vector3(a.x/b.x, a.y/b.y, a.z/b.z)
+    return type(a.x/b.x, a.y/b.y, a.z/b.z)
 end operator
 operator / (a as Vector3, b as double) as Vector3
-    return Vector3(a.x/b, a.y/b, a.z/b)
+    return type(a.x/b, a.y/b, a.z/b)
 end operator
 function vector3_cross(a as Vector3, b as Vector3) as Vector3
-    return Vector3(_
+    return type(_
         a.y*b.z - a.z*b.y,_
         a.z*b.x - a.x*b.z,_
         a.x*b.y - a.y*b.x _
@@ -63,6 +66,15 @@ function vector3_dot(a as Vector3, b as Vector3) as double
 end function
 function vector3_length(a as Vector3) as double
     return sqr(a.x*a.x + a.y*a.y + a.z*a.z)
+end function
+function vector3_lerp(from as Vector3, goal as Vector3, a as double = 0.5) as Vector3
+    a = iif(a < 0, 0, iif(a > 1, 1, a))
+    a = 1 - exp(-4.0 * a)
+    return type(_
+        from.x + (goal.x - from.x) * a,_
+        from.y + (goal.y - from.y) * a,_
+        from.z + (goal.z - from.z) * a _
+    )
 end function
 function vector3_rotate(a as Vector3, radians as double, axis as integer = 2) as Vector3
     dim v as Vector3
@@ -83,20 +95,11 @@ function vector3_rotate(a as Vector3, radians as double, axis as integer = 2) as
 end function
 function vector3_unit(a as Vector3) as Vector3
     dim m as double = vector3_length(a)
-    return Vector3(a.x/m, a.y/m, a.z/m)
+    return type(a.x/m, a.y/m, a.z/m)
 end function
 property Vector3.length as double
     return vector3_length(this)
 end property
-function vector3_lerp(from as Vector3, goal as Vector3, a as double = 0.5) as Vector3
-    a = iif(a < 0, 0, iif(a > 1, 1, a))
-    a = 1 - exp(-4.0 * a)
-    return Vector3(_
-        from.x + (goal.x - from.x) * a,_
-        from.y + (goal.y - from.y) * a,_
-        from.z + (goal.z - from.z) * a _
-    )
-end function
 property Vector3.unit as Vector3
     return vector3_unit(this)
 end property
