@@ -6,13 +6,16 @@
 #include once "inc/mouse2.bi"
 using FB
 
-#define PI 3.1415926535
-#define RADIANS(degrees) degrees * PI/180
-#define DEGREES(radians) radians * 180/PI
+#define pi 3.1415926535
+#define rad(degrees) degrees * PI/180
+#define deg(radians) radians * 180/PI
 #define myFormat(f) iif(f >= 0, " ", "-") + str(abs(fix(f))) + "." + str(int(abs(frac(f)) * 100))
+#define rgb_r(c) (c shr 16 and &hff)
+#define rgb_g(c) (c shr  8 and &hff)
+#define rgb_b(c) (c        and &hff)
 
 const SEED = 1337
-const NUM_PARTICLES = 2500
+const NUM_PARTICLES = 1000
 const FIELD_SIZE = 500
 
 '=======================================================================
@@ -225,21 +228,42 @@ function viewToScreen(vp as vector3) as Vector2
     return v2
 end function
 
+function clamp(value as double, min as double = 0, max as double = 1) as double
+    return iif(value < min, min, iif(value > max, max, value))
+end function
+
+function clamp_int(value as integer, min as integer = 0, max as integer = 1) as integer
+    return iif(value < min, min, iif(value > max, max, value))
+end function
+
 '=======================================================================
 '= PARTICLETYPE
 '=======================================================================
 type ParticleType
+    colr as integer
     position as Vector3
-    color3 as integer
+    twinkleAmp as double   = rnd * 32
+    twinkleFreq as double  = rnd * 1
+    twinklePhase as double = rnd * 2 * PI
     declare constructor ()
-    declare constructor (position as Vector3, color3 as integer)
+    declare constructor (position as Vector3, colr as integer)
+    declare function getTwinkleColor() as integer
 end type
 constructor ParticleType
 end constructor
-constructor ParticleType (position as Vector3, color3 as integer)
+constructor ParticleType (position as Vector3, colr as integer)
     this.position = position
-    this.color3 = color3
+    this.colr = colr
 end constructor
+function ParticleType.getTwinkleColor() as integer
+    dim as integer r, g, b
+    dim as double shift = _
+    twinkleAmp * sin(2 * PI * frac(timer * twinkleFreq) + twinklePhase)
+    r = clamp_int(rgb_r(colr) + int(shift), 0, 255)
+    g = clamp_int(rgb_g(colr) + int(shift), 0, 255)
+    b = clamp_int(rgb_b(colr) + int(shift), 0, 255)
+    return rgb(r, g, b)
+end function
 
 type PointLight
     position as Vector2
@@ -255,10 +279,6 @@ constructor PointLight(position as Vector2, color3 as integer, intensity as doub
     this.color3 = color3
     this.intensity = intensity
 end constructor
-
-function clamp(value as double, min as double = 0, max as double = 1) as double
-    return iif(value < min, min, iif(value > max, max, value))
-end function
 
 function pickStarColor(a as double, m as double=1, variant as integer = 1) as integer
     dim as Vector2 va
@@ -373,19 +393,17 @@ sub renderObjects(objects() as Object3, camera as CFrame3, world as CFrame3)
 end sub
 
 sub renderParticles(particles() as ParticleType, camera as CFrame3)
+    dim as ParticleType particle
+    dim as Vector2 coords
+    dim as Vector3 vertex
+    dim as double radius
     for i as integer = 0 to ubound(particles)
-        dim as ParticleType particle = particles(i)
-        dim as Vector3 vp = vertexToView(particle.position, camera)
-        if vp.z > 1 then
-            dim as Vector2 sp = viewToScreen(vp)
-            dim as double size = abs(1/vp.z) * 0.2
-            if size > 0 then
-                'line(sp.x-size, sp.y-size)-(sp.x+size, sp.y+size), particle.color3, bf
-                circle(sp.x, sp.y), size, particle.color3
-                'circle(sp.x, sp.y), 0.004, particle.color3
-            elseif size > 0 then
-                pset(sp.x, sp.y), particle.color3
-            end if
+        particle = particles(i)
+        vertex = vertexToView(particle.position, camera)
+        if vertex.z > 1 then
+            coords = viewToScreen(vertex)
+            radius = abs(1/vertex.z) * 0.2
+            circle(coords.x, coords.y), radius, particle.getTwinkleColor()
         end if
     next i
 end sub
@@ -484,11 +502,11 @@ sub renderUI(mouse as Mouse2, reticleColor as integer = &h808080, arrowColor as 
     dim as double stp = PI/3
     dim as double start = atan2(m.y, m.x)
     if start < 0 then start += 2*PI
-    for rad as double = start-2*PI-stp/4 to 2*PI step stp
-        if rad >= 0 then
-            circle(0, 0), fr, reticleColor, rad, rad+stp/2
+    for r as double = start-2*PI-stp/4 to 2*PI step stp
+        if r >= 0 then
+            circle(0, 0), fr, reticleColor, r, r+stp/2
         end if
-    next rad
+    next r
     '- draw directionol arrow
     dim as double sz
     dim as integer colr = arrowColor
@@ -498,11 +516,11 @@ sub renderUI(mouse as Mouse2, reticleColor as integer = &h808080, arrowColor as 
         a = m.unit*fr*1.15
         b = a.unit.port*sz
         line(a.x, a.y)-step(b.x, b.y), colr
-        b = b.unit.starboard.rotate(radians(-30))*sz*2
+        b = b.unit.starboard.rotate(rad(-30))*sz*2
         line -step(b.x, b.y), colr
-        b = b.unit.rotate(radians(-120))*sz*2
+        b = b.unit.rotate(rad(-120))*sz*2
         line -step(b.x, b.y), colr
-        b = b.unit.rotate(radians(-120))*sz
+        b = b.unit.rotate(rad(-120))*sz
         line -step(b.x, b.y), colr
     end if
 
@@ -510,9 +528,9 @@ sub renderUI(mouse as Mouse2, reticleColor as integer = &h808080, arrowColor as 
     dim as ulong ants = &b11000011110000111100001111000011 shr int(frac(timer*1.5)*16)
     a = m
     sz = 0.076
-    b = Vector2(radians(-75))*sz
+    b = Vector2(rad(-75))*sz
     line(a.x, a.y)-step(b.x, b.y), &hf0f0f0, , ants
-    b = b.rotate(radians(105))*0.8
+    b = b.rotate(rad(105))*0.8
     line -step(b.x, b.y), &hf0f0f0, , ants
     line -(a.x, a.y), &hf0f0f0, , ants
 end sub
@@ -537,8 +555,11 @@ focusObject = spaceship
 
 dim as double rotateSpeed = 1
 dim as double translateSpeed = 15
-dim as double shiftBoost = 2
+dim as double speedBoost = 2
 screenset 1, 0
+
+dim as double  fpsTimeStart = timer
+dim as integer fps, frameCount
 
 dim as double frameTimeStart = 0
 dim as double frameTimeEnd   = 0
@@ -567,17 +588,27 @@ while true
     renderUI mouse
 
     dim as Object3 focus = *focusObject
-    locate 1,1
+
+    frameCount += 1
+    if timer - fpsTimeStart >= 1 then
+        fps = frameCount
+        fpsTimeStart = timer
+        frameCount = 0
+    end if
+    
+    locate 14, 1
+    print "FPS " + str(fps)
     
     screencopy 1, 0
     dim as double deltaTime = timer - frameTimeStart
     dim as double deltaRotate = deltaTime * rotateSpeed
     dim as double deltaTranslate = deltaTime * translateSpeed
+
     frameTimeStart = timer
 
-    if multikey(SC_LSHIFT) or multikey(SC_RSHIFT) then
-        deltaRotate *= shiftBoost
-        deltaTranslate *= shiftBoost
+    if multikey(SC_CONTROL) then
+        deltaRotate *= speedBoost
+        deltaTranslate *= speedBoost
     end if
 
     targetMovement = Vector3(0, 0, 0)
@@ -620,21 +651,19 @@ while true
         targetRotation.z -= mx
     end if
 
-    if multikey(SC_D) then targetMovement.x += 1
-    if multikey(SC_A) then targetMovement.x -= 1
-    if multikey(SC_Q) then targetMovement.y += 1
-    if multikey(SC_Z) then targetMovement.y -= 1
-    if multikey(SC_W) then targetMovement.z += 1
-    if multikey(SC_S) then targetMovement.z -= 1
+    if multikey(SC_D     ) then targetMovement.x += 1
+    if multikey(SC_A     ) then targetMovement.x -= 1
+    if multikey(SC_SPACE ) then targetMovement.y += 1
+    if multikey(SC_LSHIFT) then targetMovement.y -= 1
+    if multikey(SC_W     ) then targetMovement.z += 1
+    if multikey(SC_S     ) then targetMovement.z -= 1
 
     if multikey(SC_UP   ) then targetRotation.x -= 1
     if multikey(SC_DOWN ) then targetRotation.x += 1
     if multikey(SC_RIGHT) then targetRotation.y -= 1
     if multikey(SC_LEFT ) then targetRotation.y += 1
-    if multikey(SC_CONTROL) then
-        if multikey(SC_RIGHT) then targetRotation.z -= 1
-        if multikey(SC_LEFT ) then targetRotation.z += 1
-    end if
+    if multikey(SC_Q    ) then targetRotation.z += 1
+    if multikey(SC_E    ) then targetRotation.z -= 1
 
     targetMovement = (_
         + targetMovement.x * camera.vRight   _
