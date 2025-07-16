@@ -6,6 +6,7 @@ type CFrame3
     declare constructor ()
     declare constructor (_position as Vector3)
     declare constructor (_position as Vector3, _orientation as Orientation3)
+    declare constructor (_orientation as Orientation3)
     declare property orientation as Orientation3
     declare property orientation(axis as integer) as Vector3
     declare property orientation(newOrientation as Orientation3)
@@ -75,6 +76,9 @@ constructor CFrame3(_position as Vector3)
 end constructor
 constructor CFrame3(_position as Vector3, _orientation as Orientation3)
     this._position    = _position
+    this._orientation = _orientation
+end constructor
+constructor CFrame3(_orientation as Orientation3)
     this._orientation = _orientation
 end constructor
 '===============================================================================

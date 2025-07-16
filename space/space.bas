@@ -1,9 +1,9 @@
 #include once "fbgfx.bi"
-#include once "vector3.bi"
-#include once "vector2.bi"
-#include once "orientation3.bi"
-#include once "cframe3.bi"
-#include once "mouse2.bi"
+#include once "inc/vector3.bi"
+#include once "inc/vector2.bi"
+#include once "inc/orientation3.bi"
+#include once "inc/cframe3.bi"
+#include once "inc/mouse2.bi"
 using FB
 
 #define PI 3.1415926535
@@ -30,84 +30,173 @@ screenres SCREEN_W, SCREEN_H, SCREEN_DEPTH, 2, FULL_SCREEN
 SCREEN_ASPECT_X = SCREEN_W / SCREEN_H
 SCREEN_ASPECT_Y = SCREEN_H / SCREEN_W
 
-'=======================================================================
-'= OBJECT3
-'=======================================================================
+'===============================================================================
+'= FACE3
+'===============================================================================
 type Face3
-    vertexIndexes(2) as integer
+    vertexIds(any) as integer
     normal as Vector3
+    declare function addVertexId(vertexId as integer) as Face3
+    declare static function calcNormal(vertexes() as Vector3) as Vector3
 end type
-type Object3 extends CFrame3
-    sid as string
-    velocity as Vector3
-    vertexes(any) as Vector3
-    normals(any) as Vector3
+function Face3.addVertexId(vertexId as integer) as Face3
+    dim as integer n = ubound(vertexIds)
+    redim preserve vertexIds(n + 1)
+    vertexIds(n + 1) = vertexId
+    return this
+end function
+static function Face3.calcNormal(vertexes() as Vector3) as Vector3
+    dim as Vector3 a, b, c, normal
+    dim as integer vertexCount = ubound(vertexes) + 1
+    if vertexCount = 3 then
+        a = vertexes(1)
+        b = vertexes(2)
+        c = vertexes(0)
+        normal = (a - c).cross(b - c)
+    elseif vertexCount > 3 then
+        dim as integer ub = ubound(vertexes)
+        for i as integer = 0 to ub
+            a = iif(i < ub, vertexes(i + 1), vertexes( 0))
+            b = iif(i >  0, vertexes(i - 1), vertexes(ub))
+            c = vertexes(i)
+            normal += (a - c).cross(b - c)
+        next i
+    end if
+    return normal.unit
+end function
+'===============================================================================
+'= MESH3
+'===============================================================================
+type Mesh3
     faces(any) as Face3
+    vertexes(any) as Vector3
+    sid as string
+    declare function addFace(face as Face3) as Mesh3
+    declare function addVertex(vertex as Vector3) as Mesh3
+    declare function centerGeometry() as Mesh3
+    declare function getVertex(vertexId as integer) as Vector3
 end type
-function object_read(sid as string) as Object3
-    dim o as Object3
-    restore
-    dim as string datum, key
-    while true
-        read datum
-        if datum = sid then
-            o.sid = sid
-            dim as double scale = 1
-            while true
-                read key
-                select case key
-                case "end"
-                    exit while
-                case "f"
-                    dim as integer i, n = ubound(o.faces)+1
-                    dim as Vector3 vertexes(2)
-                    redim preserve o.faces(n)
-                    for i = 0 to 2
-                        dim as integer vertexIndex
-                        read vertexIndex
-                        vertexIndex -= 1
-                        o.faces(n).vertexIndexes(i) = vertexIndex
-                        vertexes(i) = o.vertexes(vertexIndex)
-                    next i
-                    dim as Vector3 a, b
-                    a = vertexes(1) - vertexes(0)
-                    b = vertexes(2) - vertexes(0)
-                    o.faces(n).normal = a.cross(b).unit
-                case "s"
-                    read scale
-                case "v"
-                    dim as integer n = ubound(o.vertexes)+1
-                    redim preserve o.vertexes(n)
-                    read o.vertexes(n).x
-                    read o.vertexes(n).y
-                    read o.vertexes(n).z
-                end select
-            wend
-            exit while
+function Mesh3.addFace(face as Face3) as Mesh3
+    dim as integer n = ubound(faces)
+    redim preserve faces(n + 1) as Face3
+    this.faces(n + 1) = face
+    return this
+end function
+function Mesh3.addVertex(vertex as Vector3) as Mesh3
+    dim as integer n = ubound(vertexes)
+    redim preserve vertexes(n + 1) as Vector3
+    vertexes(n + 1) = vertex
+    return this
+end function
+function Mesh3.centerGeometry() as Mesh3
+    dim as Vector3 average
+    for i as integer = 0 to ubound(vertexes)
+        average += vertexes(i)
+    next i
+    average /= ubound(vertexes)
+    for i as integer = 0 to ubound(vertexes)
+        vertexes(i) -= average
+    next i
+    return this
+end function
+function Mesh3.getVertex(vertexId as integer) as Vector3
+    return this.vertexes(vertexId)
+end function
+'===============================================================================
+'= OBJECT3
+'===============================================================================
+type Object3 extends CFrame3
+    id as integer
+    velocity as Vector3
+    mesh as Mesh3
+    declare function loadFile(filename as string) as integer
+    declare function transform() as Object3
+end type
+sub string_split(subject as string, delim as string, pieces() as string)
+    dim as integer i, j, index = -1
+    dim as string s
+    i = 1
+    while i > 0
+        s = ""
+        j = instr(i, subject, delim)
+        if j then
+            s = mid(subject, i, j-i)
+            i = j+1
+        else
+            s = mid(subject, i)
+            i = 0
+        end if
+        if s <> "" then
+            index += 1: redim preserve pieces(index) as string
+            pieces(index) = s
         end if
     wend
-    return o
+end sub
+function Object3.loadFile(filename as string) as integer
+    dim as string datum, pieces(any), s
+    dim as integer f = freefile
+    open filename for input as #f
+        while not eof(f)
+            line input #f, s
+            string_split(s, " ", pieces())
+            for i as integer = 0 to ubound(pieces)
+                dim as string datum = pieces(i)
+                select case datum
+                    case "o"
+                        mesh.sid = pieces(i + 1)
+                        continue while
+                    case "v"
+                        mesh.addVertex(Vector3(_
+                            val(pieces(1)),_
+                            val(pieces(2)),_
+                            val(pieces(3)) _
+                        ))
+                    case "f"
+                        dim as integer index, n = ubound(pieces) - 1
+                        dim as Vector3 vertexes(n)
+                        dim as Face3 face
+                        for j as integer = 0 to ubound(vertexes)
+                            index = val(pieces(1 + j)) - 1
+                            face.addVertexId(index)
+                            vertexes(j) = mesh.getVertex(index)
+                        next j
+                        face.normal = Face3.calcNormal(vertexes())
+                        mesh.addFace(face)
+                    case else
+                        continue while
+                end select
+            next i
+        wend
+    close #1
+    return 0
 end function
-function object_center(o as Object3) as Object3
-    dim as Vector3 average
-    for i as integer = 0 to ubound(o.vertexes)
-        average += o.vertexes(i)
+function Object3.transform() as Object3
+    for i as integer = 0 to ubound(mesh.vertexes)
+        dim as Vector3 v = mesh.vertexes(i)
+        mesh.vertexes(i) = Vector3(_
+            vector3_dot(vRight   , v),_
+            vector3_dot(vUp      , v),_
+            vector3_dot(vForward , v)_
+        ) + this.position
     next i
-    average /= ubound(o.vertexes)
-    for i as integer = 0 to ubound(o.vertexes)
-        o.vertexes(i) -= average
+    for i as integer = 0 to ubound(mesh.faces)
+        dim as Vector3 n = mesh.faces(i).normal
+        mesh.faces(i).normal = Vector3(_
+            vector3_dot(vRight   , n),_
+            vector3_dot(vUp      , n),_
+            vector3_dot(vForward , n)_
+        )
     next i
-    return o
+    return this
 end function
-function object_collection_add(sid as string, collection() as Object3) as Object3 ptr
-    dim o as Object3 = object_read(sid)
-    if o.sid = sid then
+function object_collection_add(filename as String, collection() as Object3) as Object3 ptr
+    dim as Object3 o
+    if o.loadFile(filename) = 0 then
+        'o.centerGeometry()
         dim as integer n = ubound(collection)
         redim preserve collection(n+1)
-        collection(n+1) = object_center(o)
+        collection(n+1) = o
         return @collection(n+1)
-    else
-        error -2
     end if
 end function
 
@@ -120,9 +209,9 @@ function vertexToView(v as vector3, camera as CFrame3, skipTranslation as boolea
          p -= camera.position
     end if
     return Vector3(_
-        vector3_dot(camera.vRight  , -p),_
-        vector3_dot(camera.vUp     , -p),_
-        vector3_dot(camera.vForward, -p) _
+        vector3_dot(camera.vRight  , p),_
+        vector3_dot(camera.vUp     , p),_
+        vector3_dot(camera.vForward, p) _
     )
 end function
 
@@ -230,28 +319,34 @@ for i as integer = 0 to ubound(particles)
     particles(i) = p
 next i
 
-sub renderObjects(objects() as Object3, camera as CFrame3)
-    dim as Vector2 v2(2)
+sub renderObjects(objects() as Object3, camera as CFrame3, world as CFrame3)
+    dim as Face3 face
+    dim as Mesh3 mesh
+    dim as Object3 o
+    dim as Vector2 v2(any)
+    dim as Vector3 normal, vertex, vewtex
+    dim as double surfaceCos
+    dim as boolean isVisible
     for i as integer = 0 to ubound(objects)
-        dim as Object3 o = objects(i)
-        for j as integer = 0 to ubound(o.faces)
-            dim as double surfaceCos
-            dim as boolean isVisible = true
-            dim as Face3 face = o.faces(j)
-            for k as integer = 0 to 2
-                dim as integer index = face.vertexIndexes(k)
-                dim as Vector3 vertex = o.vertexes(index) + o.position
-                dim as Vector3 vewtex = vertexToView(vertex, camera)
+        o = objects(i)
+        o.transform()
+        mesh = o.mesh
+        for j as integer = 0 to ubound(mesh.faces)
+            isVisible = true
+            face = mesh.faces(j)
+            redim v2(ubound(face.vertexIds))
+            for k as integer = 0 to ubound(face.vertexIds)
+                vertex = mesh.getVertex(face.vertexIds(k))
+                vewtex = vertexToView(vertex, camera)
                 if k = 0 then
-                    surfaceCos = vector3_dot(face.normal, Vector3(0, 1, 0))
-                    dim as Vector3 normal = vertexToView(face.normal, camera, true).unit
+                    normal = vertexToView(face.normal, camera, true).unit
                     if vector3_dot(vewtex, normal) > 0 then
                         isVisible = false
                         exit for
                     end if
                 end if
                 v2(k) = viewToScreen(vewtex)
-                if vewtex.z > -1 then
+                if vewtex.z < 1 then
                     isVisible = false
                     exit for
                 end if
@@ -259,18 +354,18 @@ sub renderObjects(objects() as Object3, camera as CFrame3)
             if isVisible then
                 dim as Vector2 a, b, c
                 if isVisible then
+                    'surfaceCos = vector3_dot(face.normal, world.vUp)
                     '~ dim as integer cr, cg, cb, colr
                     '~ cr = int(clamp(surfaceCos)*255)
                     '~ cg = int(clamp(surfaceCos)*255)
                     '~ cb = int(clamp(surfaceCos)*255)
                     '~ colr = rgb(cr, cg, cb)
                     dim as integer colr = &hffffff
-                    a = v2(0)
-                    b = v2(1)
-                    c = v2(2)
-                    line(a.x, a.y)-(b.x, b.y), colr
-                    line(b.x, b.y)-(c.x, c.y), colr
-                    line(c.x, c.y)-(a.x, a.y), colr
+                    for k as integer = 0 to ubound(v2)
+                        a = v2(k)
+                        b = iif(k < ubound(v2), v2(k+1), v2(0))
+                        line(a.x, a.y)-(b.x, b.y), colr
+                    next k
                 end if
             end if
         next j
@@ -281,7 +376,7 @@ sub renderParticles(particles() as ParticleType, camera as CFrame3)
     for i as integer = 0 to ubound(particles)
         dim as ParticleType particle = particles(i)
         dim as Vector3 vp = vertexToView(particle.position, camera)
-        if vp.z < -1 then
+        if vp.z > 1 then
             dim as Vector2 sp = viewToScreen(vp)
             dim as double size = abs(1/vp.z) * 0.2
             if size > 0 then
@@ -432,9 +527,9 @@ dim as Mouse2 mouse
 mouse.hide()
 mouse.setMode(Mouse2Mode.Viewport)
 
-dim as CFrame3 camera
+dim as CFrame3 camera, world
 dim as Object3 objectCollection(any)
-dim as Object3 ptr spaceship = object_collection_add("spaceship", objectCollection())
+dim as Object3 ptr spaceship = object_collection_add("mesh/spaceship-quads.obj", objectCollection())
 dim as Object3 ptr controlObject, focusObject
 
 controlObject = spaceship
@@ -462,7 +557,7 @@ while true
     end if
 
     cls
-    renderObjects(objectCollection(), camera)
+    renderObjects(objectCollection(), camera, world)
     renderParticles(particles(), camera)
 
     dim as string s = getOrientationStats(camera)
@@ -472,6 +567,7 @@ while true
     renderUI mouse
 
     dim as Object3 focus = *focusObject
+    locate 1,1
     
     screencopy 1, 0
     dim as double deltaTime = timer - frameTimeStart
@@ -488,57 +584,63 @@ while true
     targetRotation = Vector3(0, 0, 0)
 
     
-    targetCamera = (focus - focus.vForward * 12 + focus.vUp * 3) '->rotate(camera)
+    'targetCamera = (focus - focus.vForward * 12 + focus.vUp * 3) '->rotate(camera)
+    '~ camera.position = Vector3(0, 3, 12) '(focus - focus.vForward * 12 + focus.vUp * 3) '->rotate(camera)
 
-    if multikey(SC_W) then targetVelocity =  translateSpeed * focus.vForward
-    if multikey(SC_S) then targetVelocity = -translateSpeed * focus.vForward
-    if multikey(SC_LEFT ) then targetOrientation = focus.orientation.rotate(Vector3(0, 0,  radians(10)))
-    if multikey(SC_RIGHT) then targetOrientation = focus.orientation.rotate(Vector3(0, 0, -radians(10)))
-    if multikey(SC_UP   ) then targetOrientation = focus.orientation.rotate(Vector3( radians(10), 0, 0))
-    if multikey(SC_DOWN ) then targetOrientation = focus.orientation.rotate(Vector3(-radians(10), 0, 0))
+    '~ if multikey(SC_W) then targetVelocity =  translateSpeed * focus.vForward
+    '~ if multikey(SC_S) then targetVelocity = -translateSpeed * focus.vForward
+    '~ if multikey(SC_LEFT  ) then targetOrientation = focus.orientation.rotate(Vector3(0, 0, -radians(10)))
+    '~ if multikey(SC_RIGHT ) then targetOrientation = focus.orientation.rotate(Vector3(0, 0,  radians(10)))
+    '~ if multikey(SC_UP    ) then targetOrientation = focus.orientation.rotate(Vector3(-radians(10), 0, 0))
+    '~ if multikey(SC_DOWN  ) then targetOrientation = focus.orientation.rotate(Vector3( radians(10), 0, 0))
+    '~ if multikey(SC_END   ) then targetOrientation = focus.orientation.rotate(Vector3(0, -radians(10), 0))
+    '~ if multikey(SC_DELETE) then targetOrientation = focus.orientation.rotate(Vector3(0,  radians(10), 0))
 
-    focus.velocity = focus.velocity.lerp(targetVelocity, deltaTime)
-    focus.position = focus.position + focus.velocity * deltaTime
+    '~ focus.velocity = focus.velocity.lerp(targetVelocity, deltaTime)
+    '~ focus.position = focus.position + focus.velocity * deltaTime
 
-    focus.orientation = focus.orientation.lerp(targetOrientation, deltaTime)
+    '~ focus.orientation = focus.orientation.lerp(targetOrientation, deltaTime)
 
-    *focusObject = focus
+    '~ *focusObject = focus
 
+    dim as double mx, my
+    mx = mouse.x
+    my = mouse.y * SCREEN_ASPECT_X
     if mouse.leftDown then
-        targetRotation.y -= mouse.x
-        targetRotation.x -= mouse.y
+        targetRotation.y -= mx
+        targetRotation.x -= my
     end if
     if mouse.middleDown then
-        targetMovement.x += mouse.x
-        targetMovement.y += mouse.y
+        targetMovement.x += mx
+        targetMovement.y += my
     elseif mouse.rightDown then
-        dim as Vector2 m = type(mouse.x, mouse.y)
+        dim as Vector2 m = type(mx, my)
         m = m.rotate(atan2(targetRotation.z, targetRotation.x))
-        targetRotation.x -= mouse.y
-        targetRotation.z -= mouse.x
+        targetRotation.x -= my
+        targetRotation.z -= mx
     end if
 
-    '~ if multikey(SC_D) then targetMovement.x += 1
-    '~ if multikey(SC_A) then targetMovement.x -= 1
-    '~ if multikey(SC_Q) then targetMovement.y += 1
-    '~ if multikey(SC_Z) then targetMovement.y -= 1
-    '~ if multikey(SC_W) then targetMovement.z += 1
-    '~ if multikey(SC_S) then targetMovement.z -= 1
+    if multikey(SC_D) then targetMovement.x += 1
+    if multikey(SC_A) then targetMovement.x -= 1
+    if multikey(SC_Q) then targetMovement.y += 1
+    if multikey(SC_Z) then targetMovement.y -= 1
+    if multikey(SC_W) then targetMovement.z += 1
+    if multikey(SC_S) then targetMovement.z -= 1
 
-    '~ if multikey(SC_UP   ) then targetRotation.x -= 1
-    '~ if multikey(SC_DOWN ) then targetRotation.x += 1
-    '~ if multikey(SC_RIGHT) then targetRotation.y -= 1
-    '~ if multikey(SC_LEFT ) then targetRotation.y += 1
-    '~ if multikey(SC_CONTROL) then
-        '~ if multikey(SC_RIGHT) then targetRotation.z -= 1
-        '~ if multikey(SC_LEFT ) then targetRotation.z += 1
-    '~ end if
+    if multikey(SC_UP   ) then targetRotation.x -= 1
+    if multikey(SC_DOWN ) then targetRotation.x += 1
+    if multikey(SC_RIGHT) then targetRotation.y -= 1
+    if multikey(SC_LEFT ) then targetRotation.y += 1
+    if multikey(SC_CONTROL) then
+        if multikey(SC_RIGHT) then targetRotation.z -= 1
+        if multikey(SC_LEFT ) then targetRotation.z += 1
+    end if
 
-    '~ targetMovement = (_
-        '~ + targetMovement.x * camera.vRight   _
-        '~ + targetMovement.y * camera.vUp      _
-        '~ + targetMovement.z * camera.vForward _
-    '~ ) * deltaTranslate
+    targetMovement = (_
+        + targetMovement.x * camera.vRight   _
+        + targetMovement.y * camera.vUp      _
+        + targetMovement.z * camera.vForward _
+    ) * deltaTranslate
 
     targetRotation *= deltaRotate
     
@@ -546,204 +648,12 @@ while true
     if targetRotation.length > 1 then targetRotation = targetRotation.unit
     movement = movement.lerp(targetMovement, deltaTime)
     rotation = rotation.lerp(targetRotation, deltaTime)
-    'camera += movement
+    camera += movement
     camera.orientation = camera.orientation.rotate(rotation)
-    camera = camera.lerp(targetCamera, deltaTime)
+    'camera = camera.lerp(targetCamera, deltaTime)
+    'rotation = rotation.lerp(targetRotation, deltaTime)
+    'focus.orientation = focus.orientation.rotate(rotation)
+    '*focusObject = focus
 wend
 setmouse , , 1
 end
-
-'=======================================================================
-'= DATA
-'=======================================================================
-data 9
-data "cube"
-data "s",  10
-data "v",  1,  1, -1
-data "v",  1, -1, -1
-data "v",  1,  1,  1
-data "v",  1, -1,  1
-data "v", -1,  1, -1
-data "v", -1, -1, -1
-data "v", -1,  1,  1
-data "v", -1, -1,  1
-data "f", 5, 3, 1
-data "f", 3, 8, 4
-data "f", 7, 6, 8
-data "f", 2, 8, 6
-data "f", 1, 4, 2
-data "f", 5, 2, 6
-data "f", 5, 7, 3
-data "f", 3, 7, 8
-data "f", 7, 5, 6
-data "f", 2, 4, 8
-data "f", 1, 3, 4
-data "f", 5, 1, 2
-data "end"
-
-data "spaceship"
-data "v", 2.000000, 0.250000, -1.000000
-data "v", 1.500000, 1.500000, 4.000000
-data "v", 1.500000, 0.500000, 4.000000
-data "v", -1.945922, 0.977856, -0.996525
-data "v", -2.000000, 0.250000, -1.000000
-data "v", -1.500000, 1.500000, 4.000000
-data "v", -1.500000, 0.500000, 4.000000
-data "v", 1.000000, -0.500000, -3.000000
-data "v", -1.000000, -0.500000, -3.000000
-data "v", 1.000000, 0.000000, -3.000000
-data "v", -1.000000, 0.000000, -3.000000
-data "v", -4.000000, 0.250000, 0.500000
-data "v", -4.000000, 0.250000, 2.000000
-data "v", -4.000000, 0.750000, 2.000000
-data "v", -4.000000, 0.750000, 0.500000
-data "v", 4.000000, 0.750000, 0.500000
-data "v", 4.000000, 0.250000, 0.500000
-data "v", 4.000000, 0.750000, 2.000000
-data "v", 4.000000, 0.250000, 2.000000
-data "v", -1.500000, 0.000000, 1.000000
-data "v", 0.000000, -0.500000, -1.000000
-data "v", 1.500000, 0.000000, 1.000000
-data "v", 0.000000, 0.000000, 2.741200
-data "v", -2.518813, -0.022215, 0.676867
-data "v", 2.518813, -0.022215, 0.676867
-data "v", 0.000000, 2.500000, 3.000000
-data "v", -1.743595, 1.497457, 0.907487
-data "v", 0.000000, 1.250000, -2.000000
-data "v", -0.000000, 2.232334, 4.925400
-data "v", -1.000000, 0.500000, 5.250000
-data "v", -1.500000, 1.000000, 5.250000
-data "v", 1.500000, 1.000000, 5.250000
-data "v", 0.000000, 0.500000, 4.500000
-data "v", -1.000000, 1.000000, 6.000000
-data "v", 1.000000, 1.000000, 6.000000
-data "v", 0.000000, 1.750000, 6.000000
-data "v", 0.008196, 0.035187, 6.063925
-data "v", 0.000000, 0.770043, 7.525838
-data "v", -0.000000, 0.216650, 6.688897
-data "v", -1.250000, 1.187500, 7.500000
-data "v", 1.250000, 1.187500, 7.500000
-data "v", -0.662020, 2.007978, 3.233271
-data "v", -1.000000, 2.000000, 5.000000
-data "v", -0.500000, 1.750000, 6.000000
-data "v", -0.625000, 1.562500, 7.500000
-data "v", 0.649679, 2.014331, 3.264472
-data "v", 1.000000, 2.000000, 5.000000
-data "v", 0.500000, 1.750000, 6.000000
-data "v", 0.625000, 1.562500, 7.500000
-data "v", 1.945922, 0.977856, -0.996525
-data "v", 1.740592, 1.499280, 0.911932
-data "v", 0.000000, 2.035285, 0.170850
-data "v", -1.085742, 2.120719, 1.742460
-data "v", 1.140913, 2.077799, 1.634414
-data "v", 0.375000, 2.500000, 2.000000
-data "v", -0.375000, 2.500000, 2.000000
-data "f", 6, 53, 27
-data "f", 3, 22, 25
-data "f", 3, 18, 2
-data "f", 1, 10, 50
-data "f", 11, 8, 9
-data "f", 5, 11, 9
-data "f", 21, 9, 8
-data "f", 28, 10, 11
-data "f", 14, 12, 13
-data "f", 27, 15, 14
-data "f", 5, 15, 4
-data "f", 7, 14, 13
-data "f", 16, 19, 17
-data "f", 1, 16, 17
-data "f", 51, 18, 16
-data "f", 20, 23, 7
-data "f", 21, 20, 5
-data "f", 21, 22, 23
-data "f", 8, 1, 21
-data "f", 21, 5, 9
-data "f", 5, 20, 24
-data "f", 20, 7, 24
-data "f", 7, 13, 24
-data "f", 13, 12, 24
-data "f", 12, 5, 24
-data "f", 22, 1, 25
-data "f", 1, 17, 25
-data "f", 17, 19, 25
-data "f", 19, 3, 25
-data "f", 26, 55, 56
-data "f", 28, 51, 50
-data "f", 28, 27, 52
-data "f", 46, 29, 47
-data "f", 3, 33, 23
-data "f", 47, 32, 2
-data "f", 30, 37, 34
-data "f", 43, 34, 44
-data "f", 30, 34, 31
-data "f", 29, 48, 47
-data "f", 40, 38, 45
-data "f", 36, 49, 48
-data "f", 34, 39, 40
-data "f", 34, 45, 44
-data "f", 38, 39, 41
-data "f", 36, 45, 38
-data "f", 29, 44, 36
-data "f", 42, 29, 26
-data "f", 35, 49, 41
-data "f", 47, 35, 32
-data "f", 52, 53, 56
-data "f", 2, 54, 46
-data "f", 28, 4, 27
-data "f", 28, 52, 51
-data "f", 14, 6, 27
-data "f", 51, 2, 18
-data "f", 11, 4, 28
-data "f", 50, 10, 28
-data "f", 51, 52, 54
-data "f", 54, 55, 46
-data "f", 54, 52, 55
-data "f", 56, 53, 42
-data "f", 52, 27, 53
-data "f", 39, 38, 40
-data "f", 32, 3, 2
-data "f", 7, 31, 6
-data "f", 42, 6, 43
-data "f", 33, 7, 23
-data "f", 52, 56, 55
-data "f", 26, 56, 42
-data "f", 6, 42, 53
-data "f", 22, 3, 23
-data "f", 3, 19, 18
-data "f", 1, 8, 10
-data "f", 11, 10, 8
-data "f", 5, 4, 11
-data "f", 14, 15, 12
-data "f", 5, 12, 15
-data "f", 7, 6, 14
-data "f", 16, 18, 19
-data "f", 1, 50, 16
-data "f", 21, 23, 20
-data "f", 21, 1, 22
-data "f", 26, 46, 55
-data "f", 3, 37, 33
-data "f", 46, 26, 29
-data "f", 46, 47, 2
-data "f", 30, 33, 37
-data "f", 43, 31, 34
-data "f", 29, 36, 48
-data "f", 37, 32, 35
-data "f", 35, 41, 39
-data "f", 39, 34, 37
-data "f", 37, 35, 39
-data "f", 36, 38, 49
-data "f", 34, 40, 45
-data "f", 41, 49, 38
-data "f", 36, 44, 45
-data "f", 29, 43, 44
-data "f", 42, 43, 29
-data "f", 35, 48, 49
-data "f", 47, 48, 35
-data "f", 2, 51, 54
-data "f", 27, 4, 15
-data "f", 16, 50, 51
-data "f", 32, 37, 3
-data "f", 7, 30, 31
-data "f", 6, 31, 43
-data "f", 33, 30, 7
-data "end"
