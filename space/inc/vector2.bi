@@ -32,16 +32,7 @@ end operator
 operator + (a as Vector2, b as Vector2) as Vector2
     return type(a.x+b.x, a.y+b.y)
 end operator
-operator + (a as Vector2, b as double) as Vector2
-    return type(a.x+b, a.y+b)
-end operator
-operator + (a as double, b as Vector2) as Vector2
-    return b + a
-end operator
 operator - (a as Vector2, b as Vector2) as Vector2
-    return a + -b
-end operator
-operator - (a as Vector2, b as double) as Vector2
     return a + -b
 end operator
 operator * (a as Vector2, b as Vector2) as Vector2
@@ -59,11 +50,20 @@ end operator
 operator / (a as Vector2, b as double) as Vector2
     return type(a.x/b, a.y/b)
 end operator
+operator ^ (a as Vector2, e as double) as Vector2
+    return type(a.x^e, a.y^e)
+end operator
 function vector2_cross(a as Vector2, b as Vector2) as double
     return a.x*b.y - a.y*b.x
 end function
-function vector2_dot(a as Vector2, b as Vector2) as double
+function vector2_dot overload(a as Vector2, b as Vector2) as double
     return a.x*b.x + a.y*b.y
+end function
+function vector2_dot overload(a() as Vector2, b as Vector2) as Vector2
+    return a(0)*b.x + a(1)*b.y
+end function
+function vector2_dot overload(a() as Vector2, b() as Vector2) as Vector2
+    return a(0)*b(0) + a(1)*b(1)
 end function
 function vector2_length(a as Vector2) as double
     return sqr(a.x*a.x + a.y*a.y)

@@ -27,16 +27,7 @@ end operator
 operator + (a as Vector3, b as Vector3) as Vector3
     return type(a.x+b.x, a.y+b.y, a.z+b.z)
 end operator
-operator + (a as Vector3, b as double) as Vector3
-    return type(a.x+b, a.y+b, a.z+b)
-end operator
-operator + (a as double, b as Vector3) as Vector3
-    return b + a
-end operator
 operator - (a as Vector3, b as Vector3) as Vector3
-    return a + -b
-end operator
-operator - (a as Vector3, b as double) as Vector3
     return a + -b
 end operator
 operator * (a as Vector3, b as Vector3) as Vector3
@@ -54,6 +45,9 @@ end operator
 operator / (a as Vector3, b as double) as Vector3
     return type(a.x/b, a.y/b, a.z/b)
 end operator
+operator ^ (a as Vector3, e as double) as Vector3
+    return type(a.x^e, a.y^e, a.z^e)
+end operator
 function vector3_cross(a as Vector3, b as Vector3) as Vector3
     return type(_
         a.y*b.z - a.z*b.y,_
@@ -61,8 +55,17 @@ function vector3_cross(a as Vector3, b as Vector3) as Vector3
         a.x*b.y - a.y*b.x _
     )
 end function
-function vector3_dot(a as Vector3, b as Vector3) as double
+function vector3_dot overload(a as Vector3, b as Vector3) as double
     return a.x*b.x + a.y*b.y + a.z*b.z
+end function
+function vector3_dot overload(a() as Vector3, b as Vector3) as Vector3
+    return a(0)*b.x + a(1)*b.y + a(2)*b.z
+end function
+function vector3_dot overload(a() as Vector3, b() as Vector3) as Vector3
+    return a(0)*b(0) + a(1)*b(1) + a(2)*b(2)
+end function
+function vector3_exp(a as Vector3, power as double) as Vector3
+    return a * exp(power)
 end function
 function vector3_length(a as Vector3) as double
     return sqr(a.x*a.x + a.y*a.y + a.z*a.z)
@@ -85,8 +88,8 @@ function vector3_rotate(a as Vector3, radians as double, axis as integer = 2) as
         v.y = a.y * rcos + a.z * -rsin
         v.z = a.y * rsin + a.z *  rcos
     case 1
-        v.x = a.x * rcos + a.z * -rsin
-        v.z = a.x * rsin + a.z *  rcos
+        v.z = a.z * rcos + a.x * -rsin
+        v.x = a.z * rsin + a.x *  rcos
     case 2
         v.x = a.x * rcos + a.y * -rsin
         v.y = a.x * rsin + a.y *  rcos
