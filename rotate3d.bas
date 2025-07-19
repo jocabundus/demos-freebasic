@@ -27,9 +27,10 @@ declare sub drawLine(x0 as integer, y0 as integer, x1 as integer, y1 as integer,
 declare sub drawVector(v as VectorType, colr as integer = &hff0000)
 declare sub drawPoly(p as PolyType)
 declare sub drawObject(o as ObjectType, polys() as PolyType)
-declare sub transformObject(o as ObjectType, polys() as PolyType, callback as sub(p as PolyType))
+declare sub transformObject(o as ObjectType, polys() as PolyType, callback as sub(p as PolyType, quat as VectorType), q as VectorType)
 declare sub cloneObject(o as ObjectType, src as ObjectType, polys() as PolyType)
-declare sub vectorToAngle(v as VectorType, a as double)
+declare sub vectorFromDegrees(v as VectorType, degrees as double)
+declare sub vectorFromRadians(v as VectorType, radians as double)
 declare sub rotateX(v as VectorType, a as double)
 declare sub rotateY(v as VectorType, a as double)
 declare sub rotateZ(v as VectorType, a as double)
@@ -38,12 +39,12 @@ declare sub mulQuads(v as VectorType, q as VectorType)
 declare sub setZoom(z as double = 1.0)
 declare sub cross2d(v as VectorType)
 
-declare sub rotatePoly(p as PolyType)
+declare sub rotatePoly(p as PolyType, q as VectorType)
 
 dim shared as integer SCREEN_W, SCREEN_H, SCREEN_BPP
 dim shared as integer CENTER_X, CENTER_Y
 dim shared as double ZOOM = 1.0
-CONST PI = 3.141592
+CONST PI = 3.141593
 
 dim polys(99) as PolyType
 dim objects(9) as ObjectType
@@ -65,6 +66,8 @@ objects( ObjectIds.Pyramid ).polyCount = 5
 
 
 screeninfo SCREEN_W, SCREEN_H, SCREEN_BPP
+SCREEN_W = 1280
+SCREEN_H = 720
 screenres SCREEN_W, SCREEN_H, SCREEN_BPP, 2, 1
 screenset 1, 0
 CENTER_X = percentToX(50)
@@ -72,53 +75,53 @@ CENTER_Y = percentToY(50)
 
 setZoom 10
 
-dim as VectorType v
-dim as VectorType r
 dim as PolyType p
 dim as ObjectType o
 
-dim shared as double t, a
+dim as VectorType quat = type(0, 0, 30*PI/180, 0)
 
-a = 0
+'dim as VectorType q: makeQuad(q, 0, 0, 0, 30*PI/180)
+
 do
     cls
     drawLine -CENTER_X, 0, CENTER_X, 0, &h7f7f7f
     drawLine 0, -CENTER_Y, 0, CENTER_Y, &h7f7f7f
-    
-    cloneObject o, objects( ObjectIds.Pyramid ), polys()
-    transformObject o, polys(), @rotatePoly
+
+    cloneObject o, objects( ObjectIds.Cube ), polys()
+    'cloneObject o, objects( ObjectIds.Pyramid ), polys()
+    transformObject o, polys(), @rotatePoly, quat
     drawObject o, polys()
     
     screensync
     screencopy
     
-    't = timer+0.015: while timer < t: wend
-    a += 1
+    'sleep(1)
+    quat.w += PI/180
     
     if inkey = chr(27) then exit do
 loop
 end
 
-sub rotatePoly(p as PolyType)
+sub rotatePoly(p as PolyType, q as VectorType)
     
-    dim as VectorType q, rot, irot
+    dim as VectorType rot, irot, u
     dim as integer n
     
-    makeQuad(rot, a, 0, 0, 30): irot = rot
+    makeQuad(rot, q.w, q.x, q.y, q.z): irot = rot
     irot.x = -irot.x: irot.y = -irot.y: irot.z = -irot.z
     
     for n = 0 to 2
-        q = rot
-        mulQuads(q, p.v(n)): mulQuads(q, irot)
-        p.v(n) = q
+        u = rot
+        mulQuads(u, p.v(n)): mulQuads(u, irot)
+        p.v(n) = u
     next n
     
 end sub
 
 sub makeQuad(v as VectorType, w as double, x as double, y as double, z as double)
     
-    vectorToAngle(v, 0): rotateX(v, x): rotateY(v, y): rotateZ(v, z)
-    w   = w * 0.5 * PI/180
+    vectorFromRadians(v, 0): rotateX(v, x): rotateY(v, y): rotateZ(v, z)
+    w   = w * 0.5
     v.w = cos(w): v.x *= sin(w): v.y *= sin(w): v.z *= sin(w)
     
 end sub
@@ -180,7 +183,7 @@ sub rotateX(v as VectorType, a as double)
     dim r as VectorType
     dim z as double
     
-    vectorToAngle(r, a)
+    vectorFromRadians(r, a)
     
     z = v.z
     v.z = v.z * r.x - v.y * r.y
@@ -193,7 +196,7 @@ sub rotateY(v as VectorType, a as double)
     dim r as VectorType
     dim x as double
     
-    vectorToAngle(r, a)
+    vectorFromRadians(r, a)
     
     x = v.x
     v.x = v.x * r.x - v.z * r.y
@@ -206,7 +209,7 @@ sub rotateZ(v as VectorType, a as double)
     dim r as VectorType
     dim x as double
     
-    vectorToAngle(r, a)
+    vectorFromRadians(r, a)
     
     x = v.x
     v.x = v.x * r.x - v.y * r.y
@@ -214,10 +217,19 @@ sub rotateZ(v as VectorType, a as double)
     
 end sub
 
-sub vectorToAngle(v as VectorType, a as double)
+sub vectorFromDegrees(v as VectorType, degrees as double)
     
-    v.x = cos(a*PI/180)
-    v.y = sin(a*PI/180)
+    v.x = cos(degrees * PI / 180)
+    v.y = sin(degrees * PI / 180)
+    v.z = 0
+    v.w = 1
+    
+end sub
+
+sub vectorFromRadians(v as VectorType, radians as double)
+    
+    v.x = cos(radians)
+    v.y = sin(radians)
     v.z = 0
     v.w = 1
     
@@ -312,7 +324,7 @@ sub drawObject(o as ObjectType, polys() as PolyType)
     
 end sub
 
-sub transformObject(o as ObjectType, polys() as PolyType, callback as sub(p as PolyType))
+sub transformObject(o as ObjectType, polys() as PolyType, callback as sub(p as PolyType, q as VectorType), q as VectorType)
     
     dim as integer idx0, idx1
     dim as integer n
@@ -320,7 +332,7 @@ sub transformObject(o as ObjectType, polys() as PolyType, callback as sub(p as P
     idx0 = o.polyIndex
     idx1 = idx0 + o.polyCount
     for n = idx0 to idx1-1
-        callback( polys(n) )
+        callback( polys(n), q )
     next n
     
 end sub
