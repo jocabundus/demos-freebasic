@@ -128,7 +128,6 @@ do
     
     drawObject o, polys()
     
-    v.x = 0: v.y = 0:. v.z = 0
     p.v(0) = v: p.v(1) = up     : p.v(2) = starboard: p.colr = &hff0000
     panPoly p, o.vpos: drawPoly p
     p.v(0) = v: p.v(1) = up     : p.v(2) = forward  : p.colr = &h00ff00
