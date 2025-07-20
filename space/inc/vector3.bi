@@ -4,12 +4,12 @@ type Vector3
     z as double
     declare constructor()
     declare constructor(x as double, y as double, z as double)
-    declare property length as double
-    declare property unit as Vector3
     declare function cross(b as Vector3) as Vector3
     declare function dot(b as Vector3) as double
+    declare function length() as double
     declare function lerp(goal as Vector3, a as double=0.5) as Vector3
     declare function rotate(radians as double, axis as integer = 2) as Vector3
+    declare function unit() as Vector3
 end type
 constructor Vector3
 end constructor
@@ -100,21 +100,21 @@ function vector3_unit(a as Vector3) as Vector3
     dim m as double = vector3_length(a)
     return type(a.x/m, a.y/m, a.z/m)
 end function
-property Vector3.length as double
-    return vector3_length(this)
-end property
-property Vector3.unit as Vector3
-    return vector3_unit(this)
-end property
 function Vector3.cross(b as Vector3) as Vector3
     return vector3_cross(this, b)
 end function
 function Vector3.dot(b as Vector3) as double
     return vector3_dot(this, b)
 end function
+function Vector3.length() as double
+    return vector3_length(this)
+end function
 function Vector3.lerp(goal as Vector3, a as double=0.5) as Vector3
     return vector3_lerp(this, goal, a)
 end function
 function Vector3.rotate(radians as double, axis as integer = 2) as Vector3
     return vector3_rotate(this, radians, axis)
+end function
+function Vector3.unit() as Vector3
+    return vector3_unit(this)
 end function

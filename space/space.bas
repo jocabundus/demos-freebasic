@@ -30,6 +30,7 @@ const FIELD_SIZE = 500
 dim shared as integer SCREEN_W
 dim shared as integer SCREEN_H
 dim shared as integer SCREEN_DEPTH = 32
+dim shared as integer SCREEN_BPP
 dim shared as integer SCREEN_PITCH
 dim shared as double  SCREEN_ASPECT_X
 dim shared as double  SCREEN_ASPECT_Y
@@ -41,7 +42,7 @@ if screenres(SCREEN_W, SCREEN_H, SCREEN_DEPTH, 2, FULL_SCREEN) <> 0 then
     sleep
     end
 end if
-screeninfo , , , , SCREEN_PITCH
+screeninfo , , , SCREEN_BPP, SCREEN_PITCH
 SCREEN_ASPECT_X = SCREEN_W / SCREEN_H
 SCREEN_ASPECT_Y = SCREEN_H / SCREEN_W
 
@@ -564,118 +565,81 @@ for i as integer = 0 to ubound(particles)
     particles(i) = p
 next i
 
-type Vector2Int
-    x as integer
-    y as integer
-    declare constructor ()
-    declare constructor (x as integer, y as integer)
-end type
-constructor Vector2Int
-end constructor
-constructor Vector2Int (x as integer, y as integer)
-    this.x = x
-    this.y = y
-end constructor
-function mapPointToUV(x as double, y as double) as integer
-    return &h808080 + int(x*64) xor int(y * 64)
+function uvToColor(u as double, v as double) as integer
+    dim as integer i = int(u*255) xor int(v * 255)
+    return rgb(i, i, i)
 end function
-sub drawTexturedLine(a as Vector2Int, b as Vector2Int, c as Vector2, d as Vector2)
-
-    dim as double u, v, uvLen, ustep, vstep
-    dim as uinteger ptr pixel
-    dim as integer abLen
+sub drawTexturedTri(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uvb as Vector2, uvc as Vector2, mapFunc as function(x as double, y as double) as integer, quality as integer = 0)
+    quality = 2
+    dim as integer q = 2^quality
+    dim as integer qmod = q-1
+    dim as uinteger ptr pixel, row, tmp
     dim as any ptr buffer
-
-    
-    
+    dim as Vector2 sideA, sideB, sideC
+    dim as Vector2 toplft, btmrgt
+    dim as Vector2 sau, sbu, scu
+    dim as Vector2 bas, pro, p, n
+    dim as integer x0, x1, y0, y1
+    dim as integer rowjump
+    dim as double sal, sbl, scl
+    dim as double u, v, w
+    toplft.x = iif(a.x < b.x, iif(a.x < c.x, a.x, c.x), iif(b.x < c.x, b.x, c.x))
+    toplft.y = iif(a.y < b.y, iif(a.y < c.y, a.y, c.y), iif(b.y < c.y, b.y, c.y))
+    btmrgt.x = iif(a.x > b.x, iif(a.x > c.x, a.x, c.x), iif(b.x > c.x, b.x, c.x))
+    btmrgt.y = iif(a.y > b.y, iif(a.y > c.y, a.y, c.y), iif(b.y > c.y, b.y, c.y))
+    toplft.x = int(toplft.x\q) * q
+    toplft.y = int(toplft.y\q) * q
+    btmrgt.x = int(btmrgt.x\q) * q
+    btmrgt.y = int(btmrgt.y\q) * q
+    if toplft.x >= SCREEN_W-q then exit sub
+    if toplft.y >= SCREEN_H-q then exit sub
+    if btmrgt.x < 0 then exit sub
+    if btmrgt.y < 0 then exit sub
+    if toplft.x < 0 then toplft.x = 0
+    if toplft.y < 0 then toplft.y = 0
+    if btmrgt.x >= SCREEN_W-q then btmrgt.x = SCREEN_W-1-q
+    if btmrgt.y >= SCREEN_H-q then btmrgt.y = SCREEN_H-1-q
+    bas = (c-b).unit: pro = a-b: sideA = b + bas * pro.dot(bas) - a
+    bas = (a-c).unit: pro = b-c: sideB = c + bas * pro.dot(bas) - b
+    bas = (b-a).unit: pro = c-a: sideC = a + bas * pro.dot(bas) - c
+    x0 = int(toplft.x): x1 = int(btmrgt.x)
+    y0 = int(toplft.y): y1 = int(btmrgt.y)
+    sau = sideA.unit: sbu = sideB.unit: scu = sideC.unit
+    sal = 1/sideA.length: sbl = 1/sideB.length: scl = 1/sideC.length
+    rowjump = q*SCREEN_PITCH\4
+    dim as integer jump1 = SCREEN_PITCH\4
     buffer = screenptr
     if buffer <> 0 then
-        abLen = b.x - a.x
-        u = c.x
-        v = c.y
-        ustep = (d.x - c.x) / abLen
-        vstep = (d.y - c.y) / abLen
-        uvLen = (c - d).length
-        pixel = buffer + a.y * SCREEN_PITCH + a.x * 4
-        
+        row = buffer + y0*SCREEN_PITCH + x0*SCREEN_BPP
         screenlock
-        for x as integer = 0 to abLen - 1
-            *pixel = mapPointToUV(u, v)
-            pixel += 1
-            u += ustep
-            v += vstep
-        next x
+        for y as integer = y0 to y1 step q
+            pixel = row
+            for x as integer = x0 to x1 step q
+                p = Vector2(x, y)
+                u = 1-(p-a).dot(sau) * sal: if u < 0 or u > 1 then pixel += q: continue for
+                v = 1-(p-b).dot(sbu) * sbl: if v < 0 or v > 1 then pixel += q: continue for
+                w = 1-(p-c).dot(scu) * scl: if w < 0 or w > 1 then pixel += q: continue for
+                n = (uva*u + uvb*v + uvc*w)/3
+                if q = 0 then
+                    *pixel = uvToColor(n.x, n.y)
+                    pixel += 1
+                else
+                    tmp = pixel
+                    for i as integer = 0 to q-1
+                        for j as integer = 0 to q-1
+                            tmp[j] = uvToColor(n.x, n.y)
+                        next j
+                        tmp += jump1
+                    next i
+                    pixel += q
+                end if
+            next x
+            row += rowjump
+        next y
         screenunlock
     end if
-
 end sub
-function clamp_int(value as integer, min as integer, max as integer) as integer
-    return iif(value < min, min, iif(value > max, max, value))
-end function
-sub drawTexturedTri(a as Vector2Int, b as Vector2Int, c as Vector2Int, mapFunc as function(x as double, y as double) as integer, quality as integer = 0)
-    dim as integer q = 2^quality
-    dim as integer w = q-1
-    dim as integer colr = &hffffff
-    dim as double ab, ac, bc
-    dim as double abx, acx, bcx
-    dim as double vab, vac, vbc
-    dim as double vabx, vacx, vbcx
-    if a.y > b.y then swap a, b
-    if a.y > c.y then swap a, c
-    if b.y > c.y then swap b, c
-    clamp_int(a.y, 0, SCREEN_H-1)
-    clamp_int(b.y, 0, SCREEN_H-1)
-    clamp_int(c.y, 0, SCREEN_H-1)
-    clamp_int(a.x, 0, SCREEN_W-1)
-    clamp_int(b.x, 0, SCREEN_W-1)
-    clamp_int(c.x, 0, SCREEN_W-1)
-    if a.x = b.x or a.x = c.x or b.x = c.x then exit sub
-    if a.y = b.y or a.y = c.y or b.y = c.y  then exit sub
-    if (a.x-b.x)=0 or (a.x-c.x)=0 or (b.x-c.x)=0 then exit sub
-    if (a.y-b.y)=0 or (a.y-c.y)=0 or (b.y-c.y)=0 then exit sub
-    'a.y -= a.y and w
-    'b.y -= b.y and w
-    'c.y -= c.y and w
-    ab = a.x
-    ac = a.x
-    bc = b.x
-    abx = q*(b.x-a.x)/(b.y-a.y)
-    acx = q*(c.x-a.x)/(c.y-a.y)
-    bcx = q*(c.x-b.x)/(c.y-b.y)
-    vab = 0
-    vac = 0
-    vbc = 0.5
-    vabx = q/(b.y-a.y)
-    vacx = q/(c.y-a.y)
-    vbcx = q/(c.y-b.y)*0.5
-    for i as integer = a.y to b.y step q
-        if ab < 0 or ac >= SCREEN_W then continue for
-        if i < 0 or i >= SCREEN_H then exit for
-        drawTexturedLine(_
-            Vector2Int(int(ab), i), Vector2Int(int(ac), i),_
-            Vector2(0, vab), Vector2(1, vac) _
-        )
-        ab += abx
-        ac += acx
-        vab += vabx
-        vac += vacx
-    next i
-    ac -= acx
-    vac -= vacx
-    for i as integer = b.y to c.y step q
-        if bc < 0 or ac >= SCREEN_W then continue for
-        if i < 0 or i >= SCREEN_H then exit for
-        drawTexturedLine(_
-            Vector2Int(int(bc), i), Vector2Int(int(ac), i),_
-            Vector2(0, vbc), Vector2(1, vac) _
-        )
-        ac += acx
-        bc += bcx
-        vac += vabx
-        vbc += vbcx
-    next i
-end sub
-sub drawTri(a as Vector2Int, b as Vector2Int, c as Vector2Int, colr as integer, quality as integer = 0)
+sub drawTri(a as Vector2, b as Vector2, c as Vector2, colr as integer, quality as integer = 0)
     dim as integer q = 2^quality
     dim as integer w = q-1
     dim as double ab, ac, bc
@@ -743,9 +707,9 @@ sub renderFaceSolid(byref face as Face3, byref mesh as Mesh3, byref camera as CF
         c.x = pmap(c.x, 0): c.y = pmap(c.y, 1)
         window
         drawTri(_
-            Vector2Int(a.x, a.y),_
-            Vector2Int(b.x, b.y),_
-            Vector2Int(c.x, c.y),_
+            Vector2(a.x, a.y),_
+            Vector2(b.x, b.y),_
+            Vector2(c.x, c.y),_
             colr _
         )
         window (-SCREEN_ASPECT_X, 1)-(SCREEN_ASPECT_X, -1)
@@ -791,10 +755,13 @@ sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as
         c.x = pmap(c.x, 0): c.y = pmap(c.y, 1)
         window
         drawTexturedTri(_
-            Vector2Int(a.x, a.y),_
-            Vector2Int(b.x, b.y),_
-            Vector2Int(c.x, c.y),_
-            @mapPointToUV _
+            Vector2(a.x, a.y),_
+            Vector2(b.x, b.y),_
+            Vector2(c.x, c.y),_
+            Vector2(0, 0),_
+            Vector2(1, 0),_
+            Vector2(1, 1),_
+            @uvToColor _
         )
         window (-SCREEN_ASPECT_X, 1)-(SCREEN_ASPECT_X, -1)
     next i
