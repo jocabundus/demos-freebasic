@@ -82,25 +82,26 @@ dim as Vector2 bas, pro
 bas = (C-B).unit: pro = A-B: sideA = B + bas * pro.dot(bas) - A
 bas = (A-C).unit: pro = B-C: sideB = C + bas * pro.dot(bas) - B
 bas = (B-A).unit: pro = C-A: sideC = A + bas * pro.dot(bas) - C
+dim as double colors(2, 2) = {_
+    {1, 1, 1},_
+    {1, 1, 0},_
+    {0, 0, 1}}
 window
+screenlock
 for y as integer = top to btm
     for x as integer = lft to rgt
         p = type<Vector2>(x, y)
-        if (sideA-(p-A)).dot(sideA) < 0 then continue for
-        if (sideB-(p-B)).dot(sideB) < 0 then continue for
-        if (sideC-(p-C)).dot(sideC) < 0 then continue for
         u = 1-(p-A).dot(sideA.unit) / sideA.length
         v = 1-(p-B).dot(sideB.unit) / sideB.length
         w = 1-(p-C).dot(sideC.unit) / sideC.length
-        red = clamp(red, 0, 1)
-        grn = clamp(grn, 0, 1)
-        blu = clamp(blu, 0, 1)
-        red = int(255 * u)
-        grn = int(255 * v)
-        blu = int(255 * w)
+        if u < 0 or v < 0 or w < 0 then continue for
+        if u > 1 or v > 1 or w > 1 then continue for
+        red = int(255 * (u*colors(0,0)+v*colors(1,0)+w*colors(2,0)))
+        grn = int(255 * (u*colors(0,1)+v*colors(1,1)+w*colors(2,1)))
+        blu = int(255 * (u*colors(0,2)+v*colors(1,2)+w*colors(2,2)))
         pset (x, y), rgb(red, grn, blu)
     next x
 next y
-
+screenunlock
 sleep
 end
