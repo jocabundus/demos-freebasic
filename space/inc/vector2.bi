@@ -26,6 +26,9 @@ end constructor
 operator abs (a as Vector2) as Vector2
     return type(abs(a.x), abs(a.y))
 end operator
+operator int (a as Vector2) as Vector2
+    return type(int(a.x), int(a.y))
+end operator
 operator - (a as Vector2) as Vector2
     return type(-a.x, -a.y)
 end operator
@@ -49,6 +52,12 @@ operator / (a as Vector2, b as Vector2) as Vector2
 end operator
 operator / (a as Vector2, b as double) as Vector2
     return type(a.x/b, a.y/b)
+end operator
+operator \ (a as Vector2, b as Vector2) as Vector2
+    return int(a) / int(b)
+end operator
+operator \ (a as Vector2, b as double) as Vector2
+    return int(a) / int(b)
 end operator
 operator ^ (a as Vector2, e as double) as Vector2
     return type(a.x^e, a.y^e)

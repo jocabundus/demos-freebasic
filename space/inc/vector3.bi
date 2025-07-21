@@ -21,6 +21,9 @@ end constructor
 operator abs (a as Vector3) as Vector3
     return type(abs(a.x), abs(a.y), abs(a.z))
 end operator
+operator int (a as Vector3) as Vector3
+    return type(int(a.x), int(a.y), int(a.z))
+end operator
 operator - (a as Vector3) as Vector3
     return type(-a.x, -a.y, -a.z)
 end operator
@@ -44,6 +47,12 @@ operator / (a as Vector3, b as Vector3) as Vector3
 end operator
 operator / (a as Vector3, b as double) as Vector3
     return type(a.x/b, a.y/b, a.z/b)
+end operator
+operator \ (a as Vector3, b as Vector3) as Vector3
+    return int(a) / int(b)
+end operator
+operator \ (a as Vector3, b as double) as Vector3
+    return int(a) / int(b)
 end operator
 operator ^ (a as Vector3, e as double) as Vector3
     return type(a.x^e, a.y^e, a.z^e)
