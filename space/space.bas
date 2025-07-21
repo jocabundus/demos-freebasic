@@ -14,10 +14,21 @@ using FB
 #define rgb_b(c) (c        and &hff)
 #define format_decimal(f, p) iif(f >= 0, " ", "-") + str(abs(fix(f))) + "." + str(int(abs(frac(f)) * 10^p))
 #define clamp(value, min, max) iif(value < min, min, iif(value > max, max, value))
+#define unpack_v3(v) v.x, v.y, v.z
+#define lerpexp(from, goal, a) lerp(from, goal, 1 - exp(-4.0 * a))
 
 #macro array_append(arr, value)
     redim preserve arr(ubound(arr) + 1)
     arr(ubound(arr)) = value
+#endmacro
+
+#macro keydown(scanCode, waitVar, codeBlock)
+    if multikey(scanCode) and waitVar = -1 then
+        waitVar = scanCode
+        codeBlock
+    elseif not multikey(scanCode) and waitVar = scanCode then
+        waitVar = -1
+    end if
 #endmacro
 
 const SEED = 1337
@@ -46,12 +57,12 @@ screeninfo , , , SCREEN_BPP, SCREEN_PITCH
 SCREEN_ASPECT_X = SCREEN_W / SCREEN_H
 SCREEN_ASPECT_Y = SCREEN_H / SCREEN_W
 
-enum RenderType
+enum RenderMode
     Solid
     Textured
     Wireframe
 end enum
-dim shared as integer RENDER_TYPE = RenderType.Textured
+dim shared as integer RENDER_MODE = RenderMode.Textured
 dim shared as integer QUALITY = 2, MIN_QUALITY = 0, MAX_QUALITY = 5 '- 0 is best
 
 enum AutoQuality
@@ -151,17 +162,17 @@ static function Face3.calcNormal(vertexes() as Vector3) as Vector3
         a = vertexes(1)
         b = vertexes(2)
         c = vertexes(0)
-        normal = (a - c).cross(b - c)
+        normal = cross(a-c, b-c)
     elseif vertexCount > 3 then
         dim as integer ub = ubound(vertexes)
         for i as integer = 1 to ub - 1
             a = vertexes(0)
             b = vertexes(i)
             c = vertexes(i+1)
-            normal += (b - a).cross(c - a)
+            normal += cross(b-a, c-a)
         next i
     end if
-    return normal.unit
+    return normalize(normal)
 end function
 '===============================================================================
 '= MESH3
@@ -248,7 +259,7 @@ function Mesh3.splitBsp(faceIds() as integer) as BspNode3 ptr
     if ubound(faceIds) = -1 then return 0
 
     node = new BspNode3
-    select case 0
+    select case 1
     case 0 '- average vertex point
         for i as integer = 0 to ubound(faceIds)
             face = getFace(faceIds(i))
@@ -263,7 +274,7 @@ function Mesh3.splitBsp(faceIds() as integer) as BspNode3 ptr
                 nearest = face
             end if
         next i
-    case 1 '- min area
+    case 1 '- max area
         dim as double compare, comparator
         dim as Vector3 a, b, c
         nearest = getFace(faceIds(0))
@@ -272,8 +283,8 @@ function Mesh3.splitBsp(faceIds() as integer) as BspNode3 ptr
             a = getVertex(face.vertexIds(0))
             b = getVertex(face.vertexIds(1))
             c = getVertex(face.vertexIds(2))
-            compare = (b - a).cross(c - a).length
-            if compare < comparator then
+            compare = cross(b - a, c - a).length
+            if compare > comparator then
                 comparator = compare
                 nearest = face
             end if
@@ -290,7 +301,7 @@ function Mesh3.splitBsp(faceIds() as integer) as BspNode3 ptr
         nearest = getFace(faceIds(0))
         for i as integer = 0 to ubound(faceIds)
             face = getFace(faceIds(i))
-            compare = face.normal.cross(average - face.position).length
+            compare = cross(face.normal, average - face.position).length
             if compare < comparator then
                 comparator = compare
                 nearest = face
@@ -303,7 +314,7 @@ function Mesh3.splitBsp(faceIds() as integer) as BspNode3 ptr
     for i as integer = 0 to ubound(faceIds)
         face = getFace(faceIds(i))
         if face.id <> splitter.id then
-            if splitter.normal.dot(face.position - splitter.position) <= 0 then
+            if dot(splitter.normal, face.position - splitter.position) <= 0 then
                 array_append(backs, face.id)
                 backSum += face.position
             else
@@ -483,17 +494,17 @@ function Object3.transform() as Object3
     for i as integer = 0 to ubound(mesh.vertexes)
         dim as Vector3 v = mesh.vertexes(i)
         mesh.vertexes(i) = Vector3(_
-            vector3_dot(vRight   , v),_
-            vector3_dot(vUp      , v),_
-            vector3_dot(vForward , v)_
+            dot(vRight   , v),_
+            dot(vUp      , v),_
+            dot(vForward , v)_
         ) + this.position
     next i
     for i as integer = 0 to ubound(mesh.faces)
         dim as Vector3 n = mesh.faces(i).normal
         mesh.faces(i).normal = Vector3(_
-            vector3_dot(vRight   , n),_
-            vector3_dot(vUp      , n),_
-            vector3_dot(vForward , n)_
+            dot(vRight   , n),_
+            dot(vUp      , n),_
+            dot(vForward , n)_
         )
     next i
     return this
@@ -517,9 +528,9 @@ function worldToView(position as vector3, camera as CFrame3, skipTranslation as 
         position -= camera.position
     end if
     return Vector3(_
-        vector3_dot(camera.vRight  , position),_
-        vector3_dot(camera.vUp     , position),_
-        vector3_dot(camera.vForward, position) _
+        dot(camera.vRight  , position),_
+        dot(camera.vUp     , position),_
+        dot(camera.vForward, position) _
     )
 end function
 
@@ -667,10 +678,10 @@ sub drawTexturedTri(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uv
     if toplft.y < 0 then toplft.y = 0
     if btmrgt.x >= SCREEN_W then btmrgt.x = SCREEN_W-1
     if btmrgt.y >= SCREEN_H then btmrgt.y = SCREEN_H-1
-    bas = (c-b).unit: pro = a-b: sideA = b + bas * pro.dot(bas) - a
-    bas = (a-c).unit: pro = b-c: sideB = c + bas * pro.dot(bas) - b
-    bas = (b-a).unit: pro = c-a: sideC = a + bas * pro.dot(bas) - c
-    sau = sideA.unit: sbu = sideB.unit: scu = sideC.unit
+    bas = normalize(c-b): pro = a-b: sideA = b + bas * dot(pro, bas) - a
+    bas = normalize(a-c): pro = b-c: sideB = c + bas * dot(pro, bas) - b
+    bas = normalize(b-a): pro = c-a: sideC = a + bas * dot(pro, bas) - c
+    sau = sideA.normalized: sbu = sideB.normalized: scu = sideC.normalized
     sal = 1/sideA.length: sbl = 1/sideB.length: scl = 1/sideC.length
     x0 = int(toplft.x): x1 = int(btmrgt.x)
     y0 = int(toplft.y): y1 = int(btmrgt.y)
@@ -681,9 +692,9 @@ sub drawTexturedTri(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uv
             pixel = row
             for x as integer = x0 to x1
                 p = Vector2(x, y)
-                u = 1-(p-a).dot(sau) * sal: if u < 0 or u > 1 then pixel += 1: continue for
-                v = 1-(p-b).dot(sbu) * sbl: if v < 0 or v > 1 then pixel += 1: continue for
-                w = 1-(p-c).dot(scu) * scl: if w < 0 or w > 1 then pixel += 1: continue for
+                u = 1-dot(p-a, sau) * sal: if u < 0 or u > 1 then pixel += 1: continue for
+                v = 1-dot(p-b, sbu) * sbl: if v < 0 or v > 1 then pixel += 1: continue for
+                w = 1-dot(p-c, scu) * scl: if w < 0 or w > 1 then pixel += 1: continue for
                 n = (uva*u + uvb*v + uvc*w)/3
                 *pixel = uvToColor(n.x, n.y)
                 pixel += 1
@@ -719,10 +730,10 @@ sub drawTexturedTriLowQ(a as Vector2, b as Vector2, c as Vector2, uva as Vector2
     if toplft.y < 0 then toplft.y = 0
     if btmrgt.x >= SCREEN_W then btmrgt.x = SCREEN_W-1
     if btmrgt.y >= SCREEN_H then btmrgt.y = SCREEN_H-1
-    bas = (c-b).unit: pro = a-b: sideA = b + bas * pro.dot(bas) - a
-    bas = (a-c).unit: pro = b-c: sideB = c + bas * pro.dot(bas) - b
-    bas = (b-a).unit: pro = c-a: sideC = a + bas * pro.dot(bas) - c
-    sau = sideA.unit: sbu = sideB.unit: scu = sideC.unit
+    bas = normalize(c-b): pro = a-b: sideA = b + bas * dot(pro, bas) - a
+    bas = normalize(a-c): pro = b-c: sideB = c + bas * dot(pro, bas) - b
+    bas = normalize(b-a): pro = c-a: sideC = a + bas * dot(pro, bas) - c
+    sau = sideA.normalized: sbu = sideB.normalized: scu = sideC.normalized
     sal = 1/sideA.length: sbl = 1/sideB.length: scl = 1/sideC.length
     x0 = int(toplft.x): x1 = int(btmrgt.x)
     y0 = int(toplft.y): y1 = int(btmrgt.y)
@@ -742,9 +753,9 @@ sub drawTexturedTriLowQ(a as Vector2, b as Vector2, c as Vector2, uva as Vector2
             imgPixel = imgRow
             for x as integer = x0 to x1 step q
                 p = Vector2(x, y)
-                u = 1-(p-a).dot(sau) * sal: if u < 0 or u > 1 then imgPixel += 1: continue for
-                v = 1-(p-b).dot(sbu) * sbl: if v < 0 or v > 1 then imgPixel += 1: continue for
-                w = 1-(p-c).dot(scu) * scl: if w < 0 or w > 1 then imgPixel += 1: continue for
+                u = 1-dot(p-a, sau) * sal: if u < 0 or u > 1 then imgPixel += 1: continue for
+                v = 1-dot(p-b, sbu) * sbl: if v < 0 or v > 1 then imgPixel += 1: continue for
+                w = 1-dot(p-c, scu) * scl: if w < 0 or w > 1 then imgPixel += 1: continue for
                 n = (uva*u + uvb*v + uvc*w)/3
                 *imgPixel = uvToColor(n.x, n.y)
                 imgPixel += 1
@@ -809,12 +820,12 @@ sub renderFaceSolid(byref face as Face3, byref mesh as Mesh3, byref camera as CF
     dim as Vector3 viewNormal, viewVertex(ubound(face.vertexIds))
     dim as Vector3 worldNormal, worldVertex
     dim as integer colr, cr, cg, cb
-    dim as double dot, value
+    dim as double dt, value
     cr = rgb_r(face.colr)
     cg = rgb_g(face.colr)
     cb = rgb_b(face.colr)
-    dot = vector3_dot(face.normal, (world.vUp + camera.vForward).unit)
-    value = 64 * dot
+    dt = dot(face.normal, normalize(world.vUp + camera.vForward))
+    value = 64 * dt
     colr = rgb(_
         clamp(cr+value, 0, 255),_
         clamp(cg+value, 0, 255),_
@@ -828,8 +839,8 @@ sub renderFaceSolid(byref face as Face3, byref mesh as Mesh3, byref camera as CF
         end if
     next i
     if not mesh.doubleSided then
-        viewNormal = worldToView(face.normal, camera, true).unit
-        if vector3_dot(viewVertex(0), viewNormal) > 0 then
+        viewNormal = normalize(worldToView(face.normal, camera, true))
+        if dot(viewVertex(0), viewNormal) > 0 then
             exit sub
         end if
     end if
@@ -858,13 +869,13 @@ sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as
     dim as Vector3 viewNormal, viewVertex(ubound(face.vertexIds))
     dim as Vector3 worldNormal, worldVertex
     dim as integer value, colr, cr, cg, cb
-    dim as double dot
+    dim as double dt
     cr = rgb_r(face.colr)
     cg = rgb_g(face.colr)
     cb = rgb_b(face.colr)
-    dot = vector3_dot(face.normal, World.vUp)
-    dot = vector3_dot(face.normal, (camera.position - face.position).unit)
-    value = 64 * (-0.5 + dot)
+    dt = dot(face.normal, World.vUp)
+    dt = dot(face.normal, normalize(camera.position - face.position))
+    value = 64 * (-0.5 + dt)
     colr = rgb(_
         clamp(cr+value, 0, 255),_
         clamp(cg+value, 0, 255),_
@@ -878,8 +889,8 @@ sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as
         end if
     next i
     if not mesh.doubleSided then
-        viewNormal = worldToView(face.normal, camera, true).unit
-        if vector3_dot(viewVertex(0), viewNormal) > 0 then
+        viewNormal = normalize(worldToView(face.normal, camera, true))
+        if dot(viewVertex(0), viewNormal) > 0 then
             exit sub
         end if
     end if
@@ -921,12 +932,12 @@ sub renderFaceWireframe(byref face as Face3, byref mesh as Mesh3, byref camera a
     dim as Vector3 viewVertex(ubound(face.vertexIds))
     dim as Vector3 worldVertex
     dim as integer value, colr, cr, cg, cb
-    dim as double dot
+    dim as double dt
     cr = rgb_r(face.colr)
     cg = rgb_g(face.colr)
     cb = rgb_b(face.colr)
-    dot = vector3_dot(face.normal, World.vUp)
-    value = 64 * (-0.5 + dot)
+    dt = dot(face.normal, World.vUp)
+    value = 64 * (-0.5 + dt)
     colr = rgb(_
         clamp(cr+value, 0, 255),_
         clamp(cg+value, 0, 255),_
@@ -956,22 +967,22 @@ sub renderBspFaces(node as BspNode3 ptr, byref mesh as Mesh3, byref camera as CF
     dim as Vector3 normal, vertex, vewtex
     dim as Face3 face
     dim as integer faceId = node->faceId
-    dim as double dot
+    dim as double dt
     if faceId >= 0 then
         face = mesh.getFace(faceId)
-        dot = face.normal.dot(camera.position - face.position)
-        if dot > 0 then
+        dt = dot(face.normal, camera.position - face.position)
+        if dt > 0 then
             renderBspFaces node->behind, mesh, camera, world
             renderBspFaces node->infront, mesh, camera, world
         else
             renderBspFaces node->infront, mesh, camera, world
             renderBspFaces node->behind, mesh, camera, world
         end if
-        select case RENDER_TYPE
-            case RenderType.Solid   : renderFaceSolid face, mesh, camera, world
-            case RenderType.Textured: renderFaceTextured face, mesh, camera, world
-            case RenderType.Wireframe
-                if dot > 0 then
+        select case RENDER_MODE
+            case RenderMode.Solid   : renderFaceSolid face, mesh, camera, world
+            case RenderMode.Textured: renderFaceTextured face, mesh, camera, world
+            case RenderMode.Wireframe
+                if dt > 0 then
                     renderFaceWireframe face, mesh, camera, world
                 else
                     renderFaceWireframe face, mesh, camera, world
@@ -1096,9 +1107,9 @@ function getOrientationStats(camera as CFrame3) as string
     dim as string stats(3, 3)
     for i as integer = 0 to 2
         dim as Vector3 o = camera.orientation.matrix(i)
-        stats(0, i) = format_decimal(o.x, 2)
-        stats(1, i) = format_decimal(o.y, 2)
-        stats(2, i) = format_decimal(o.z, 2)
+        stats(i, 0) = format_decimal(o.x, 2)
+        stats(i, 1) = format_decimal(o.y, 2)
+        stats(i, 2) = format_decimal(o.z, 2)
     next i
     dim as integer roww = 21
     dim as integer colw = 8
@@ -1148,14 +1159,14 @@ sub renderUI(mouse as Mouse2, reticleColor as integer = &h808080, arrowColor as 
     dim as Vector2 a, b
     if mouse.buttons > 0 then
         sz = fr/4
-        a = m.unit*fr*1.15
-        b = a.unit.port*sz
+        a = normalize(m)*fr*1.15
+        b = normalize(a).rotatedLeft()*sz
         line(a.x, a.y)-step(b.x, b.y), colr
-        b = b.unit.starboard.rotate(rad(-30))*sz*2
+        b = normalize(b).rotatedRight().rotated(rad(-30))*sz*2
         line -step(b.x, b.y), colr
-        b = b.unit.rotate(rad(-120))*sz*2
+        b = normalize(b).rotated(rad(-120))*sz*2
         line -step(b.x, b.y), colr
-        b = b.unit.rotate(rad(-120))*sz
+        b = normalize(b).rotated(rad(-120))*sz
         line -step(b.x, b.y), colr
     end if
 
@@ -1165,7 +1176,7 @@ sub renderUI(mouse as Mouse2, reticleColor as integer = &h808080, arrowColor as 
     sz = 0.076
     b = Vector2(rad(-75))*sz
     line(a.x, a.y)-step(b.x, b.y), &hf0f0f0, , ants
-    b = b.rotate(rad(105))*0.8
+    b = b.rotated(rad(105))*0.8
     line -step(b.x, b.y), &hf0f0f0, , ants
     line -(a.x, a.y), &hf0f0f0, , ants
 end sub
@@ -1188,7 +1199,8 @@ dim as Object3 ptr spaceship = object_collection_add("mesh/spaceship3.obj", obje
 'dim as Object3 ptr spaceship = object_collection_add("mesh/spaceship3-tris.obj", objectCollection())
 dim as Object3 ptr controlObject, focusObject
 
-camera.orientation *= Vector3(0, rad(180), 0)
+'camera.orientation *= Vector3(0, rad(180), 0)
+
 
 spaceship->mesh.doubleSided = true
 spaceship->mesh.paintFaces(&hc0c0c0)
@@ -1196,9 +1208,9 @@ spaceship->mesh.paintFaces(&hc0c0c0)
 controlObject = spaceship
 focusObject = spaceship
 
-dim as double rotateSpeed = 1
-dim as double translateSpeed = 15
-dim as double speedBoost = 2
+dim as double rotateSpeed    = 1
+dim as double translateSpeed = 1
+dim as double speedFactor    = 10
 screenset 1, 0
 
 dim as double  fpsTimeStart = timer
@@ -1259,20 +1271,25 @@ while true
 
     dim as integer row = 15
     dim as string buffer = space(21)
-    select case RENDER_TYPE
-        case RenderType.Solid    : mid(buffer, 2) = "Solid"
-        case RenderType.Textured : mid(buffer, 2) = "Texture"
-        case RenderType.Wireframe: mid(buffer, 2) = "Wireframe"
+    select case RENDER_MODE
+        case RenderMode.Solid    : mid(buffer, 2) = "Solid"
+        case RenderMode.Textured : mid(buffer, 2) = "Texture"
+        case RenderMode.Wireframe: mid(buffer, 2) = "Wireframe"
     end select
     printStringBlock(row, 1, buffer, "RENDER MODE", "_", "")
 
-    if RENDER_TYPE = RenderType.Textured then
+    if RENDER_MODE = RenderMode.Textured then
         buffer = space(21)
         mid(buffer,  2) = str(QUALITY+1)
         mid(buffer,  4) = iif(AUTO_QUALITY = AutoQuality.DistanceBased, "=automatic=", "=manual=")
         row += 5
         printStringBlock(row, 1, buffer, "QUALITY", "_", "")
     end if
+
+    buffer = space(21)
+    mid(buffer, 1) = format_decimal(speedFactor, 1)
+    row += 5
+    printStringBlock(row, 1, buffer, "SPEED FACTOR", "_", "")
 
     buffer = space(21)
     mid(buffer, 1) = format_decimal(fps, 1)
@@ -1287,10 +1304,14 @@ while true
 
     frameTimeStart = timer
 
-    if multikey(SC_CONTROL) then
-        deltaRotate *= speedBoost
-        deltaTranslate *= speedBoost
+    if multikey(SC_PAGEUP  ) or multikey(SC_PLUS) or multikey(SC_EQUALS) then
+        speedFactor = clamp(speedFactor + 3*deltaTime, 1, 50)
+    elseif multikey(SC_PAGEDOWN) or multikey(SC_MINUS) then
+        speedFactor = clamp(speedFactor - 3*deltaTime, 1, 50)
     end if
+    speedFactor = clamp(speedFactor + 2*mouse.wheelDelta, 1, 50)
+    deltaRotate = deltaTime * rotateSpeed
+    deltaTranslate = deltaTime * speedFactor
 
     if multikey(SC_BACKSPACE) then
         lookBackwards = true
@@ -1298,7 +1319,12 @@ while true
         lookBackwards = false
     end if
 
-    if RENDER_TYPE = RenderType.Textured then
+    lookAt = 0
+    if multikey(SC_CONTROL) <> 0 or mouse.middleDown then
+        lookAt = @focus.position
+    end if
+
+    if RENDER_MODE = RenderMode.Textured then
         if multikey(SC_F1) then QUALITY = 0: AUTO_QUALITY = AutoQuality.None
         if multikey(SC_F2) then QUALITY = 1: AUTO_QUALITY = AutoQuality.None
         if multikey(SC_F3) then QUALITY = 2: AUTO_QUALITY = AutoQuality.None
@@ -1309,14 +1335,14 @@ while true
 
     if multikey(SC_TAB) and keyWait = -1 then
         keyWait = SC_TAB
-        select case RENDER_TYPE
-            case RenderType.Solid
-                RENDER_TYPE = RenderType.Textured
+        select case RENDER_MODE
+            case RenderMode.Solid
+                RENDER_MODE = RenderMode.Textured
                 AUTO_QUALITY = AutoQuality.DistanceBased
-            case RenderType.Textured
-                RENDER_TYPE = RenderType.Wireframe
-            case RenderType.Wireframe
-                RENDER_TYPE = RenderType.Solid
+            case RenderMode.Textured
+                RENDER_MODE = RenderMode.Wireframe
+            case RenderMode.Wireframe
+                RENDER_MODE = RenderMode.Solid
         end select
     elseif not multikey(SC_TAB) and keyWait = SC_TAB then
         keyWait = -1
@@ -1325,29 +1351,37 @@ while true
     if multikey(SC_1) then
         navMode = NavigationMode.Fly
     end if
-    if multikey(SC_2) and keyWait = -1 then
-        keyWait = SC_2
-        lookAt = 0
+    if multikey(SC_2) then navMode = NavigationMode.FollowClose
+    if multikey(SC_3) then navMode = NavigationMode.FollowNear
+    if multikey(SC_4) then navMode = NavigationMode.FollowMid
+    if multikey(SC_5) then navMode = NavigationMode.FollowFar
+    if multikey(SC_6) then navMode = NavigationMode.FollowVeryFar
+    
+    if multikey(SC_ENTER) and keyWait = -1 then
+        keyWait = SC_ENTER
         select case navMode
-            case NavigationMode.Fly, NavigationMode.FollowVeryFar
+            case NavigationMode.FollowVeryFar, NavigationMode.Fly
                 navMode = NavigationMode.FollowClose
-                cameraFollowDistance = Vector3(0, 2, 8)
             case NavigationMode.FollowClose
                 navMode = NavigationMode.FollowNear
-                cameraFollowDistance = Vector3(0, 3, 12)
             case NavigationMode.FollowNear
                 navMode = NavigationMode.FollowMid
-                cameraFollowDistance = Vector3(0, 6, 24)
             case NavigationMode.FollowMid
                 navMode = NavigationMode.FollowFar
-                cameraFollowDistance = Vector3(0, 15, 36)
             case NavigationMode.FollowFar
                 navMode = NavigationMode.FollowVeryFar
-                cameraFollowDistance = Vector3(0, 24, 96)
         end select
-    elseif not multikey(SC_2) and keyWait = SC_2 then
+    elseif not multikey(SC_ENTER) and keyWait = SC_ENTER then
         keyWait = -1
     end if
+
+    select case navMode
+        case NavigationMode.FollowClose  : cameraFollowDistance = Vector3(0, 2, 8)
+        case NavigationMode.FollowNear   : cameraFollowDistance = Vector3(0, 3, 12)
+        case NavigationMode.FollowMid    : cameraFollowDistance = Vector3(0, 6, 24)
+        case NavigationMode.FollowFar    : cameraFollowDistance = Vector3(0, 15, 36)
+        case NavigationMode.FollowVeryFar: cameraFollowDistance = Vector3(0, 24, 96)
+    end select
 
     targetMovement = Vector3(0, 0, 0)
     targetRotation = Vector3(0, 0, 0)
@@ -1362,13 +1396,9 @@ while true
         if mouse.leftDown then
             targetRotation.y  = mx
             targetRotation.x -= my
-        end if
-        if mouse.middleDown then
-            targetMovement.x += mx
-            targetMovement.y += my
         elseif mouse.rightDown then
             dim as Vector2 m = type(mx, my)
-            m = m.rotate(atan2(targetRotation.z, targetRotation.x))
+            m = rotate(m, atan2(targetRotation.z, targetRotation.x))
             targetRotation.x -= my
             targetRotation.z -= mx
         end if
@@ -1380,25 +1410,26 @@ while true
         if multikey(SC_W     ) then targetMovement.z =  1
         if multikey(SC_S     ) then targetMovement.z = -1
 
-        if multikey(SC_UP   ) then targetRotation.x = -1 ' 1
-        if multikey(SC_DOWN ) then targetRotation.x =  1 '-1
+        if multikey(SC_UP   ) then targetRotation.x = -1
+        if multikey(SC_DOWN ) then targetRotation.x =  1
         if multikey(SC_RIGHT) then targetRotation.y =  1
         if multikey(SC_LEFT ) then targetRotation.y = -1
-        if multikey(SC_E    ) then targetRotation.z = -1 ' 1
-        if multikey(SC_Q    ) then targetRotation.z =  1 '-1
+        if multikey(SC_E    ) then targetRotation.z = -1
+        if multikey(SC_Q    ) then targetRotation.z =  1
 
         if targetMovement.length > 0 then
-            targetMovement = vector3_dot(camera.orientation.matrix(), targetMovement).unit
+            targetMovement = normalize(dot(camera.orientation.matrix(), targetMovement))
         end if
         'if targetRotation.length > 1 then
         '    targetRotation = targetRotation.unit
         'end if
-        movement = movement.lerp(targetMovement, deltaTime)
-        rotation = rotation.lerp(targetRotation, deltaTime)
+        movement = lerpexp(movement, targetMovement, deltaTime)
+        rotation = lerpexp(rotation, targetRotation, deltaTime)
         camera += movement * deltaTranslate
+                
         camera.orientation *= rotation * deltaRotate
         if lookAt then
-            camera.orientation = Orientation3().look(focus.position - camera.position)
+            camera = camera.lookAt(*lookAt)
         end if
     case else
         if multikey(SC_D     ) then targetMovement.x =  1
@@ -1408,21 +1439,21 @@ while true
         if multikey(SC_W     ) then targetMovement.z =  1
         if multikey(SC_S     ) then targetMovement.z = -1
         
-        if multikey(SC_UP   ) then targetRotation.x =  1
-        if multikey(SC_DOWN ) then targetRotation.x = -1
+        if multikey(SC_UP   ) then targetRotation.x = -1
+        if multikey(SC_DOWN ) then targetRotation.x =  1
         if multikey(SC_RIGHT) then targetRotation.y =  1
         if multikey(SC_LEFT ) then targetRotation.y = -1
-        if multikey(SC_E    ) then targetRotation.z =  1
-        if multikey(SC_Q    ) then targetRotation.z = -1
+        if multikey(SC_E    ) then targetRotation.z = -1
+        if multikey(SC_Q    ) then targetRotation.z =  1
 
-        targetVelocity = targetVelocity.lerp(vector3_dot(focus.orientation.matrix(), targetMovement*10), deltaTime/10)
-        targetAngular = targetAngular.lerp(targetRotation*2, deltaTime/15)
+        targetVelocity = lerpexp(targetVelocity, dot(focus.orientation.matrix(), targetMovement*10), deltaTime/10)
+        targetAngular = lerpexp(targetAngular, targetRotation*2, deltaTime/15)
         
     end select
 
-    focus.velocity = focus.velocity.lerp(targetVelocity, deltaTime)
+    focus.velocity = lerpexp(focus.velocity, targetVelocity, deltaTime)
     focus.position += focus.velocity * deltaTranslate
-    angular = angular.lerp(targetAngular, deltaTime)
+    angular = lerpexp(angular, targetAngular, deltaTime)
     focus.orientation *= angular * deltaRotate
     *focusObject = focus
 
@@ -1433,8 +1464,7 @@ while true
             * iif(lookBackwards, -cameraFollowDistance.z - 3, cameraFollowDistance.z) _
             + focus.vUp * cameraFollowDistance.y _
         )
-        'targetCamera.orientation = targetCamera.orientation.look(focus.position - camera.position)
-        camera       = camera.lerp(targetCamera, deltaTime*3)
+        camera = lerpexp(camera, targetCamera, deltaTime * 3)
     end if
 wend
 mouse.Show()

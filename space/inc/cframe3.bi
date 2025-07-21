@@ -13,7 +13,9 @@ type CFrame3
     declare property vRight(newRight as Vector3)
     declare property vUp as Vector3
     declare property vUp(newUp as Vector3)
-    declare function lerp(goal as CFrame3, a as double=0.5) as CFrame3
+    declare function lerped(goal as CFrame3, a as double=0.5) as CFrame3
+    declare function lookAt(target as CFrame3, worldUp as Vector3 = type(0, 1, 0)) as CFrame3
+    declare function lookAt(target as Vector3, worldUp as Vector3 = type(0, 1, 0)) as CFrame3
 end type
 '===============================================================================
 '= CONSTRUCTOR
@@ -33,8 +35,14 @@ end constructor
 '===============================================================================
 '= OPERATOR
 '===============================================================================
+operator + (a as CFrame3, b as CFrame3) as CFrame3
+    return CFrame3(a.position + b.position, a.orientation)
+end operator
 operator + (a as CFrame3, b as Vector3) as CFrame3
     return CFrame3(a.position + b, a.orientation)
+end operator
+operator - (a as CFrame3, b as CFrame3) as CFrame3
+    return CFrame3(a.position - b.position, a.orientation)
 end operator
 operator - (a as CFrame3, b as Vector3) as CFrame3
     return a + -b
@@ -57,15 +65,21 @@ property CFrame3.vUp as Vector3     : return this.orientation.vUp    : end prope
 '===============================================================================
 '= FUNCTION
 '===============================================================================
-function cframe3_lerp(from as CFrame3, goal as CFrame3, a as double = 0.5) as CFrame3
+function lerp overload(from as CFrame3, goal as CFrame3, a as double = 0.5) as CFrame3
     return type(_
-        vector3_lerp(from.position, goal.position, a),_
-        orientation3_lerp(from.orientation, goal.orientation, a) _
+        lerp(from.position, goal.position, a),_
+        lerp(from.orientation, goal.orientation, a) _
     )
 end function
 '===============================================================================
 '= METHODS
 '===============================================================================
-function CFrame3.lerp(goal as CFrame3, a as double=0.5) as CFrame3
-    return cframe3_lerp(this, goal, a)
+function CFrame3.lerped(goal as CFrame3, a as double=0.5) as CFrame3
+    return lerp(this, goal, a)
+end function
+function CFrame3.lookAt(target as CFrame3, worldUp as Vector3 = type(0, 1, 0)) as CFrame3
+    return CFrame3(position, Orientation3.Look(target.position - position, worldUp))
+end function
+function CFrame3.lookAt(target as Vector3, worldUp as Vector3 = type(0, 1, 0)) as CFrame3
+    return CFrame3(position, Orientation3.Look(target - position, worldUp))
 end function
