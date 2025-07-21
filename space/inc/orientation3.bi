@@ -30,9 +30,6 @@ end constructor
 '===============================================================================
 '= OPERATOR
 '===============================================================================
-operator - (o as Orientation3) as Orientation3
-    return Orientation3(-o.matrix(0), -o.matrix(1), -o.matrix(2))
-end operator
 operator * (a as Orientation3, b as Orientation3) as Orientation3
     return Orientation3(_
         dot(a.matrix(), b.matrix(0)),_

@@ -71,74 +71,12 @@ enum AutoQuality
     FpsBased
 end enum
 dim shared as integer AUTO_QUALITY = AutoQuality.DistanceBased
-
-type PhongColor
-    as double ambient = 0.5
-    as double diffuse = 0.5
-    as double specular = 0.5
-    as double red, grn, blu
-    declare constructor
-    declare constructor(baseColor as integer)
-    declare constructor(baseColor as integer, ambient as double, diffuse as double, specular as double)
-    declare function applyAmbient(colr as integer, ambient as double) as integer
-    declare function applyDiffuse(colr as integer, diffuse as double) as integer
-    declare function applySpecular(colr as integer, N as Vector3, L as Vector3, V as Vector3) as integer
-    declare function getRGB(colr as integer, byref r as integer, byref g as integer, byref b as integer) as PhongColor
-end type
-constructor PhongColor
-end constructor
-constructor PhongColor(baseColor as integer)
-    this.red = rgb_r(baseColor) / 255
-    this.grn = rgb_g(baseColor) / 255
-    this.blu = rgb_b(baseColor) / 255
-end constructor
-constructor PhongColor(baseColor as integer, ambient as double, diffuse as double, specular as double)
-    this.red = rgb_r(baseColor) / 255
-    this.grn = rgb_g(baseColor) / 255
-    this.blu = rgb_b(baseColor) / 255
-    this.ambient  = ambient
-    this.diffuse  = diffuse
-    this.specular = specular
-end constructor
-function PhongColor.applyAmbient(colr as integer, ambient as double) as integer
-    dim as integer r, g, b
-    this.getRGB(colr, r, g, b)
-    r += ambient * (1 - this.red)
-    g += ambient * (1 - this.grn)
-    b += ambient * (1 - this.blu)
-    return rgb(r, g, b)
-end function
-function PhongColor.applyDiffuse(colr as integer, diffuse as double) as integer
-    dim as integer r, g, b
-    this.getRGB(colr, r, g, b)
-    r += diffuse * (1 - this.red)
-    g += diffuse * (1 - this.grn)
-    b += diffuse * (1 - this.blu)
-    return colr
-end function
-function PhongColor.applySpecular(colr as integer, N as Vector3, L as Vector3, V as Vector3) as integer
-    dim as integer r, g, b
-    this.getRGB(colr, r, g, b)
-    dim as Vector3 H = (L + V) / (L + V).length
-    dim as Vector3 A = (N + H)^(this.specular)
-    
-    return colr
-end function
-function PhongColor.getRGB(colr as integer, byref r as integer, byref g as integer, byref b as integer) as PhongColor
-    r = (colr shr 16 and &hff)
-    g = (colr shr  8 and &hff)
-    b = (colr        and &hff)
-    return this
-end function
 '===============================================================================
 '= FACE3
 '===============================================================================
 type Face3
     id as integer
     colr as integer = rgb(128+92*rnd, 128+92*rnd, 128+92*rnd)
-    ambient as double = rnd
-    diffuse as double = rnd
-    specular as double = rnd
     position as Vector3
     normal as Vector3
     uvIds(any) as integer
@@ -927,22 +865,10 @@ sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as
         window (-SCREEN_ASPECT_X, 1)-(SCREEN_ASPECT_X, -1)
     next i
 end sub
-sub renderFaceWireframe(byref face as Face3, byref mesh as Mesh3, byref camera as CFrame3, byref world as CFrame3, style as integer = &hffff)
+sub renderFaceWireframe(byref face as Face3, byref mesh as Mesh3, byref camera as CFrame3, byref world as CFrame3, colr as integer = &hd0d0d0, style as integer = &hffff)
     dim as Vector2 a, b, c, pixels(ubound(face.vertexIds))
     dim as Vector3 viewVertex(ubound(face.vertexIds))
     dim as Vector3 worldVertex
-    dim as integer value, colr, cr, cg, cb
-    dim as double dt
-    cr = rgb_r(face.colr)
-    cg = rgb_g(face.colr)
-    cb = rgb_b(face.colr)
-    dt = dot(face.normal, World.vUp)
-    value = 64 * (-0.5 + dt)
-    colr = rgb(_
-        clamp(cr+value, 0, 255),_
-        clamp(cg+value, 0, 255),_
-        clamp(cb+value, 0, 255) _
-    )
     for i as integer = 0 to ubound(face.vertexIds)
         worldVertex   = mesh.getVertex(face.vertexIds(i))
         viewVertex(i) = worldToView(worldVertex, camera)
@@ -953,9 +879,9 @@ sub renderFaceWireframe(byref face as Face3, byref mesh as Mesh3, byref camera a
     for i as integer = 0 to ubound(viewVertex)
         pixels(i) = viewToScreen(viewVertex(i))
     next i
-    for i as integer = 1 to ubound(pixels) - 1
-        a = pixels(i-1)
-        b = pixels(i)
+    for i as integer = 0 to ubound(pixels)-1
+        a = pixels(i)
+        b = pixels(i+1)
         line(a.x, a.y)-(b.x, b.y), colr, , style
     next i
     a = pixels(ubound(pixels))
@@ -985,7 +911,7 @@ sub renderBspFaces(node as BspNode3 ptr, byref mesh as Mesh3, byref camera as CF
                 if dt > 0 then
                     renderFaceWireframe face, mesh, camera, world
                 else
-                    renderFaceWireframe face, mesh, camera, world
+                    renderFaceWireframe face, mesh, camera, world, , &hc0c0
                 end if
         end select
     end if
@@ -1201,9 +1127,32 @@ dim as Object3 ptr controlObject, focusObject
 
 'camera.orientation *= Vector3(0, rad(180), 0)
 
-
 spaceship->mesh.doubleSided = true
 spaceship->mesh.paintFaces(&hc0c0c0)
+dim as Mesh3 mesh = spaceship->mesh
+dim as Face3 face
+dim as Vector2 uv(2)
+dim as integer colr, r, g, b, n
+dim as double rsum, gsum, bsum
+for i as integer = 0 to ubound(mesh.faces)
+    face = mesh.faces(i)
+    uv(0) = mesh.getUv(face.uvIds(0))
+    for j as integer = 1 to ubound(face.uvIds)-1
+        uv(1) = mesh.getUv(face.uvIds(j))
+        uv(2) = mesh.getUv(face.uvIds(j+1))
+        for k as integer = 0 to ubound(uv)
+            colr = uvToColor(uv(k).x, uv(k).y)
+            rsum += rgb_r(colr)/255
+            gsum += rgb_g(colr)/255
+            bsum += rgb_b(colr)/255
+            n += 1
+        next k
+    next j
+    r = int(255*(rsum/n))
+    g = int(255*(gsum/n))
+    b = int(255*(bsum/n))
+    spaceship->mesh.faces(i).colr = rgb(r, g, b)
+next i
 
 controlObject = spaceship
 focusObject = spaceship
