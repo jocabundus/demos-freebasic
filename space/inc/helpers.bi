@@ -23,9 +23,8 @@ constructor PointLight(position as Vector2, color3 as integer, intensity as doub
     this.intensity = intensity
 end constructor
 
-function pickStarColor(a as double, m as double=1, variant as integer = 1) as integer
-    dim as Vector2 va
-    va = Vector2(a) * m
+function pickStarColor overload(va as Vector2, variant as integer = 1) as integer
+    dim as Vector2 vr, vg, vb
     dim as double r, g, b
     select case variant
         case 1
@@ -65,8 +64,47 @@ function pickStarColor(a as double, m as double=1, variant as integer = 1) as in
                 b += int(d * m * (c        and &hff))
             next i
             return rgb(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255))
+        case 3
+            dim as PointLight lights(6) = _
+            {_
+                type(Vector2(4/4*PI)*0, &hffffff, 1),_
+                type(Vector2(2/4*PI)*1, &h0000ff, 1),_
+                type(Vector2(3/4*PI)*1, &h0000ff, 1),_
+                type(Vector2(4/4*PI)*1, &h0000ff, 1),_
+                type(Vector2(5/4*PI)*1, &h0000ff, 1),_
+                type(Vector2(7/4*PI)*1/2, &hff0000, 1),_
+                type(Vector2(1/4*PI)*1, &hffff00, 1) _
+            }
+            for i as integer = 0 to ubound(lights)
+                dim as Vector2 p = lights(i).position
+                dim as integer c = lights(i).color3
+                dim as double  m = lights(i).intensity
+                dim as double  d = clamp(1-sin((p - va).length), 0, 1)
+                r += int(d * m * (c shr 16 and &hff))
+                g += int(d * m * (c shr  8 and &hff))
+                b += int(d * m * (c        and &hff))
+            next i
+            return rgb(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255))
+        case 4
+            vr = Vector2(2*PI*1/1)
+            vg = Vector2(2*PI*1/3)
+            vb = Vector2(2*PI*2/3)
+            r = clamp(sin(1-(vr - va).length), 0, 1)
+            g = clamp(sin(1-(vg - va).length), 0, 1)
+            b = clamp(sin(1-(vb - va).length), 0, 1)
+        case 5
+            vr = Vector2(2*PI*1/1)
+            vg = Vector2(2*PI*1/3)
+            vb = Vector2(2*PI*2/3)
+            r = clamp(sin(2-(vr - va).length), 0, 1)
+            g = clamp(sin(2-(vg - va).length), 0, 1)
+            b = clamp(sin(2-(vb - va).length), 0, 1)
     end select
-    return rgb(int(256*r), int(256*g), int(256*b))
+    return rgb(int(255*r), int(255*g), int(255*b))
+end function
+
+function pickStarColor(a as double, m as double=1, variant as integer = 1) as integer
+    return pickStarColor(Vector2(a) * m, variant)
 end function
 
 function getOrientationStats(camera as CFrame3) as string

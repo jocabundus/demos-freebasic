@@ -33,7 +33,6 @@ using FB
     #define _ulong_ ulong
 #endif
 
-const SEED = 1337
 const NUM_PARTICLES = 1000
 const FIELD_SIZE = 500
 
@@ -63,10 +62,11 @@ SCREEN_ASPECT_Y = SCREEN_H / SCREEN_W
 
 WINDOW_X0 = -SCREEN_ASPECT_X
 WINDOW_X1 =  SCREEN_ASPECT_X
-WINDOW_Y0 =  SCREEN_ASPECT_Y
-WINDOW_Y1 = -SCREEN_ASPECT_Y
+WINDOW_Y0 =  1
+WINDOW_Y1 = -1
 
 enum RenderMode
+    None
     Solid
     Textured
     Wireframe
@@ -154,9 +154,20 @@ for i as integer = 0 to ubound(particles)
     particles(i) = p
 next i
 
+dim shared as integer texSize = 64
+dim shared as uinteger texture(texSize-1, texSize-1)
+dim as double a, b, u, v
+for y as double = 0 to texSize-1
+    for x as double = 0 to texSize-1
+        a = x / texSize
+        b = y / texSize
+        u = sin(a*2*PI)
+        v = cos(a*2*PI)
+        texture(x, y) = pickStarColor(Vector2(u, v)*(a+b)*3.9, 4)
+    next x
+next y
 function uvToColor(u as double, v as double) as uinteger
-    dim as uinteger i = int(u*255) xor int(v * 255)
-    return rgb(i, i, i)
+    return texture(int(texSize * u), int(texSize * v))
 end function
 sub drawTexturedTri(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uvb as Vector2, uvc as Vector2, mapFunc as function(x as double, y as double) as integer, quality as integer = 0)
     dim as _long_ bpp = SCREEN_BPP, pitch = SCREEN_PITCH
@@ -625,7 +636,7 @@ end sub
 '=======================================================================
 '= START
 '=======================================================================
-randomize 'SEED
+randomize
 window (WINDOW_X0, WINDOW_Y0)-(WINDOW_X1, WINDOW_Y1)
 
 dim as Mouse2 mouse
@@ -645,6 +656,8 @@ dim as Object3 ptr controlObject, focusObject
 spaceship->mesh.doubleSided = true
 spaceship->mesh.paintFaces(&hc0c0c0)
 
+camera.position = spaceship->position + normalize(Vector3(-1+2*rnd,rnd,-1+2*rnd)) * (15+30*rnd)
+camera = camera.lookAt(spaceship->position)
 
 controlObject = spaceship
 focusObject = spaceship
@@ -663,24 +676,30 @@ dim as double frameTimeEnd   = 0
 dim as Vector3 movement, targetMovement
 dim as Vector3 rotation, targetRotation
 dim as Vector3 angular, targetAngular, targetVelocity
+
 dim as Vector3 cameraFollowDistance
 dim as CFrame3 targetCamera
 dim as Vector3 ptr lookAt = 0
 dim as boolean lookBackwards = false
 
 dim as CFrame3 ptr statsframe = @camera
+dim as CFrame3 ptr orbitTarget
 
 dim as integer keyWait = -1
 
 enum NavigationMode
     Fly
     FollowClose
+    OrbitTarget
     FollowNear
     FollowMid
     FollowFar
     FollowVeryFar
 end enum
-dim as integer navMode = NavigationMode.Fly
+dim as integer navMode = NavigationMode.OrbitTarget
+orbitTarget = focusObject
+angular = normalize(Vector3(rnd,rnd,rnd))/10
+targetAngular = angular
 
 setmouse pmap(0, 0), pmap(0, 1)
 while true
@@ -704,13 +723,7 @@ while true
         statsframe = focusObject
     end if
 
-    printStringBlock( 1, 1, getOrientationStats(*statsframe), "ORIENTATION", "_", "")
-    printStringBlock(10, 1,    getLocationStats(*statsframe),    "LOCATION", "_", "")
-    
-
     mouse.update
-    renderUI mouse
-
     frameCount += 1
     if timer - fpsTimeStart >= 1 then
         fps = frameCount
@@ -718,33 +731,43 @@ while true
         frameCount = 0
     end if
 
-    dim as integer row = 15
-    dim as string buffer = space(21)
-    select case RENDER_MODE
-        case RenderMode.Solid    : mid(buffer, 2) = "Solid"
-        case RenderMode.Textured : mid(buffer, 2) = "Texture"
-        case RenderMode.Wireframe: mid(buffer, 2) = "Wireframe"
-    end select
-    printStringBlock(row, 1, buffer, "RENDER MODE", "_", "")
+    if RENDER_MODE <> RenderMode.None and navMode <> NavigationMode.OrbitTarget then
+        printStringBlock( 1, 1, getOrientationStats(*statsframe), "ORIENTATION", "_", "")
+        printStringBlock(10, 1,    getLocationStats(*statsframe),    "LOCATION", "_", "")
 
-    if RENDER_MODE = RenderMode.Textured then
+        
+        if navMode <> NavigationMode.OrbitTarget then
+            renderUI mouse
+        end if
+        
+
+        dim as integer row = 15
+        dim as string buffer = space(21)
+        select case RENDER_MODE
+            case RenderMode.Solid    : mid(buffer, 2) = "Solid"
+            case RenderMode.Textured : mid(buffer, 2) = "Texture"
+            case RenderMode.Wireframe: mid(buffer, 2) = "Wireframe"
+        end select
+        printStringBlock(row, 1, buffer, "RENDER MODE", "_", "")
+
+        if RENDER_MODE = RenderMode.Textured then
+            buffer = space(21)
+            mid(buffer,  2) = str(QUALITY+1)
+            mid(buffer,  4) = iif(AUTO_QUALITY = AutoQuality.DistanceBased, "=automatic=", "=manual=")
+            row += 5
+            printStringBlock(row, 1, buffer, "QUALITY", "_", "")
+        end if
+
         buffer = space(21)
-        mid(buffer,  2) = str(QUALITY+1)
-        mid(buffer,  4) = iif(AUTO_QUALITY = AutoQuality.DistanceBased, "=automatic=", "=manual=")
+        mid(buffer, 1) = format_decimal(speedFactor, 1)
         row += 5
-        printStringBlock(row, 1, buffer, "QUALITY", "_", "")
+        printStringBlock(row, 1, buffer, "SPEED FACTOR", "_", "")
+
+        buffer = space(21)
+        mid(buffer, 1) = format_decimal(fps, 1)
+        row += 5
+        printStringBlock(row, 1, buffer, "FPS", "_", "")
     end if
-
-    buffer = space(21)
-    mid(buffer, 1) = format_decimal(speedFactor, 1)
-    row += 5
-    printStringBlock(row, 1, buffer, "SPEED FACTOR", "_", "")
-
-    buffer = space(21)
-    mid(buffer, 1) = format_decimal(fps, 1)
-    row += 5
-    printStringBlock(row, 1, buffer, "FPS", "_", "")
-    
     
     screencopy 1, 0
     dim as double deltaTime = timer - frameTimeStart
@@ -785,11 +808,13 @@ while true
     if multikey(SC_TAB) and keyWait = -1 then
         keyWait = SC_TAB
         select case RENDER_MODE
+            case RenderMode.None
+                RENDER_MODE = RenderMode.Wireframe
             case RenderMode.Solid
                 RENDER_MODE = RenderMode.Textured
                 AUTO_QUALITY = AutoQuality.DistanceBased
             case RenderMode.Textured
-                RENDER_MODE = RenderMode.Wireframe
+                RENDER_MODE = RenderMode.None
             case RenderMode.Wireframe
                 RENDER_MODE = RenderMode.Solid
         end select
@@ -800,14 +825,14 @@ while true
     if multikey(SC_1) then
         navMode = NavigationMode.Fly
     end if
-    if multikey(SC_2) then navMode = NavigationMode.FollowClose
-    if multikey(SC_3) then navMode = NavigationMode.FollowNear
-    if multikey(SC_4) then navMode = NavigationMode.FollowMid
-    if multikey(SC_5) then navMode = NavigationMode.FollowFar
-    if multikey(SC_6) then navMode = NavigationMode.FollowVeryFar
+    if multikey(SC_3) then
+        navMode = NavigationMode.OrbitTarget
+        angular = normalize(Vector3(rnd,rnd,rnd))/10
+        targetAngular = angular
+    end if
     
-    if multikey(SC_ENTER) and keyWait = -1 then
-        keyWait = SC_ENTER
+    if multikey(SC_2) and keyWait = -1 then
+        keyWait = SC_2
         select case navMode
             case NavigationMode.FollowVeryFar, NavigationMode.Fly
                 navMode = NavigationMode.FollowClose
@@ -820,7 +845,7 @@ while true
             case NavigationMode.FollowFar
                 navMode = NavigationMode.FollowVeryFar
         end select
-    elseif not multikey(SC_ENTER) and keyWait = SC_ENTER then
+    elseif not multikey(SC_2) and keyWait = SC_2 then
         keyWait = -1
     end if
 
@@ -880,6 +905,9 @@ while true
         if lookAt then
             camera = camera.lookAt(*lookAt)
         end if
+    case NavigationMode.OrbitTarget
+        camera = camera.lookAt(focus, focus.Orientation.vUp)
+        camera.position += cross(world.vUp, normalize(focus.position - camera.position)) * deltaTime * 3
     case else
         if multikey(SC_D     ) then targetMovement.x =  1
         if multikey(SC_A     ) then targetMovement.x = -1
@@ -907,7 +935,7 @@ while true
     'focus.orientation *= Vector3(0, .1, 0) * deltaRotate
     *focusObject = focus
 
-    if navMode <> NavigationMode.Fly then
+    if navMode <> NavigationMode.Fly and navMode <> NavigationMode.OrbitTarget then
         targetCamera = (_
               focus _
             - focus.vForward _

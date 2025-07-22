@@ -377,7 +377,7 @@ function pickColor(a as double, m as double=1, variant as integer=0) as integer
             next i
             return rgb(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255))
     end select
-    return rgb(int(256*r), int(256*g), int(256*b))
+    return rgb(int(255*r), int(255*g), int(255*b))
 end function
 
 dim as integer first = 1, last = 8, variant = 1
