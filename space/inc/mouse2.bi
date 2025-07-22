@@ -1,3 +1,13 @@
+' -----------------------------------------------------------------------------
+' Copyright (c) 2025 Joe King
+' See main file or LICENSE for license and build info.
+' -----------------------------------------------------------------------------
+#ifdef __FB_64BIT__
+    #define _long_ longint
+#else
+    #define _long_ long
+#endif
+
 enum Mouse2Event
     LeftDown = 0
     LeftUp
@@ -16,33 +26,33 @@ enum Mouse2Mode
 end enum
 type Mouse2
 private:
-    _buttonsPrev as long
-    _dragFromX as long
-    _dragFromY as long
-    _dragDeltaX as long
-    _dragDeltaY as long
+    _buttonsPrev as _long_
+    _dragFromX as _long_
+    _dragFromY as _long_
+    _dragDeltaX as _long_
+    _dragDeltaY as _long_
     _events(Mouse2Event.MAX_VALUE) as boolean
     _isVisible as boolean = true
     _mode as integer = Mouse2Mode.Standard
-    _wheelPrev as long
-    _wheelDelta as long
-    _xPrev as long
-    _xDelta as long
-    _yPrev as long
-    _yDelta as long
+    _wheelPrev as _long_
+    _wheelDelta as _long_
+    _xPrev as _long_
+    _xDelta as _long_
+    _yPrev as _long_
+    _yDelta as _long_
 public:
     x as double
     y as double
-    wheel as long
-    buttons as long
-    clipped as long
-    status as long
+    wheel as _long_
+    buttons as _long_
+    clipped as _long_
+    status as _long_
     declare constructor ()
     declare constructor (initMode as integer)
-    declare property deltaX         as long
-    declare property deltaY         as long
-    declare property dragX          as long
-    declare property dragY          as long
+    declare property deltaX         as _long_
+    declare property deltaY         as _long_
+    declare property dragX          as _long_
+    declare property dragY          as _long_
     declare property leftClicked    as boolean
     declare property leftReleased   as boolean
     declare property leftDown       as boolean
@@ -58,7 +68,7 @@ public:
     declare property rightUp        as boolean
     declare property visible        as boolean
     declare property wheelChanged   as boolean
-    declare property wheelDelta     as long
+    declare property wheelDelta     as _long_
     declare sub clip()
     declare sub unclip()
     declare sub hide()
@@ -71,10 +81,10 @@ end constructor
 constructor Mouse2(initMode as integer)
     _mode = initMode
 end constructor
-property Mouse2.deltaX         as long   : return _xDelta                         : end property
-property Mouse2.deltaY         as long   : return _yDelta                         : end property
-property Mouse2.dragX          as long   : return _dragDeltaX                     : end property
-property Mouse2.dragY          as long   : return _dragDeltaY                     : end property
+property Mouse2.deltaX         as _long_ : return _xDelta                         : end property
+property Mouse2.deltaY         as _long_ : return _yDelta                         : end property
+property Mouse2.dragX          as _long_ : return _dragDeltaX                     : end property
+property Mouse2.dragY          as _long_ : return _dragDeltaY                     : end property
 property Mouse2.leftClicked    as boolean: return _events(Mouse2Event.LeftDown)   : end property
 property Mouse2.leftReleased   as boolean: return _events(Mouse2Event.LeftUp)     : end property
 property Mouse2.leftDown       as boolean: return iif(buttons and 1, true, false) : end property
@@ -89,7 +99,7 @@ property Mouse2.rightReleased  as boolean: return _events(Mouse2Event.RightUp)  
 property Mouse2.rightDown      as boolean: return iif(buttons and 2, true, false) : end property
 property Mouse2.rightUp        as boolean: return iif(buttons and 2, false, true) : end property
 property Mouse2.wheelChanged   as boolean: return _events(Mouse2Event.WheelChange): end property
-property Mouse2.wheelDelta     as long   : return _wheelDelta                     : end property
+property Mouse2.wheelDelta     as _long_ : return _wheelDelta                     : end property
 property Mouse2.visible        as boolean: return _isVisible                      : end property
 sub Mouse2.clip()
     if clipped = 0 then

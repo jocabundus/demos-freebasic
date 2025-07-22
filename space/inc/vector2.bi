@@ -1,3 +1,7 @@
+' -----------------------------------------------------------------------------
+' Copyright (c) 2025 Joe King
+' See main file or LICENSE for license and build info.
+' -----------------------------------------------------------------------------
 type Vector2
     x as double
     y as double
@@ -26,6 +30,12 @@ operator abs (a as Vector2) as Vector2
 end operator
 operator int (a as Vector2) as Vector2
     return type(int(a.x), int(a.y))
+end operator
+operator = (a as Vector2, b as Vector2) as boolean
+    return a.x=b.x and a.y=b.y
+end operator
+operator <> (a as Vector2, b as Vector2) as boolean
+    return a.x<>b.x or a.y<>b.y
 end operator
 operator - (a as Vector2) as Vector2
     return type(-a.x, -a.y)

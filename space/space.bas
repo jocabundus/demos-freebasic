@@ -1,3 +1,19 @@
+' -----------------------------------------------------------------------------
+'  A Nameless 3D Polygonal Software Renderer & Rasterizer
+'
+'  Copyright (c) 2025 Joe King
+'  Licensed under the MIT License.
+'  See LICENSE file or https://opensource.org/licenses/MIT for details.
+'
+'
+'  "It's six degrees of raw freedom!"
+'      ~ Jimmy, 34 (Grand Rivers, KY)
+'
+'
+'  Recommended build:
+'    fbc64 %f -w all -gen gcc -O 3 -Wc -march=native
+' -----------------------------------------------------------------------------
+
 #include once "fbgfx.bi"
 #include once "inc/vector3.bi"
 #include once "inc/vector2.bi"
@@ -5,6 +21,14 @@
 #include once "inc/cframe3.bi"
 #include once "inc/mouse2.bi"
 using FB
+
+#ifdef __FB_64BIT__
+    #define _long_ longint
+    #define _ulong_ ulongint
+#else
+    #define _long_ long
+    #define _ulong_ ulong
+#endif
 
 #define pi 3.1415926535
 #define rad(degrees) degrees * PI/180
@@ -14,7 +38,7 @@ using FB
 #define rgb_b(c) (c        and &hff)
 #define format_decimal(f, p) iif(f >= 0, " ", "-") + str(abs(fix(f))) + "." + str(int(abs(frac(f)) * 10^p))
 #define clamp(value, min, max) iif(value < min, min, iif(value > max, max, value))
-#define unpack_v3(v) v.x, v.y, v.z
+#define unpack(v) v.x, v.y, v.z
 #define lerpexp(from, goal, a) lerp(from, goal, 1 - exp(-4.0 * a))
 
 #macro array_append(arr, value)
@@ -38,14 +62,16 @@ const FIELD_SIZE = 500
 '=======================================================================
 '= SCREEN STUFF
 '=======================================================================
-dim shared as integer SCREEN_W
-dim shared as integer SCREEN_H
-dim shared as integer SCREEN_DEPTH = 32
-dim shared as integer SCREEN_BPP
-dim shared as integer SCREEN_PITCH
+dim shared as _long_ SCREEN_W
+dim shared as _long_ SCREEN_H
+dim shared as _long_ SCREEN_DEPTH = 32
+dim shared as _long_ SCREEN_BPP
+dim shared as _long_ SCREEN_PITCH
 dim shared as double  SCREEN_ASPECT_X
 dim shared as double  SCREEN_ASPECT_Y
 dim shared as integer FULL_SCREEN = 1
+dim shared as integer WINDOW_X0, WINDOW_X1
+dim shared as integer WINDOW_Y0, WINDOW_Y1
 
 screeninfo SCREEN_W, SCREEN_H, SCREEN_DEPTH
 if screenres(SCREEN_W, SCREEN_H, SCREEN_DEPTH, 2, FULL_SCREEN) <> 0 then
@@ -53,16 +79,21 @@ if screenres(SCREEN_W, SCREEN_H, SCREEN_DEPTH, 2, FULL_SCREEN) <> 0 then
     sleep
     end
 end if
-screeninfo , , , SCREEN_BPP, SCREEN_PITCH
+screeninfo SCREEN_W, SCREEN_H, SCREEN_DEPTH, SCREEN_BPP, SCREEN_PITCH
 SCREEN_ASPECT_X = SCREEN_W / SCREEN_H
 SCREEN_ASPECT_Y = SCREEN_H / SCREEN_W
+
+WINDOW_X0 = -SCREEN_ASPECT_X
+WINDOW_X1 =  SCREEN_ASPECT_X
+WINDOW_Y0 =  SCREEN_ASPECT_Y
+WINDOW_Y1 = -SCREEN_ASPECT_Y
 
 enum RenderMode
     Solid
     Textured
     Wireframe
 end enum
-dim shared as integer RENDER_MODE = RenderMode.Textured
+dim shared as integer RENDER_MODE = RenderMode.Wireframe
 dim shared as integer QUALITY = 2, MIN_QUALITY = 0, MAX_QUALITY = 5 '- 0 is best
 
 enum AutoQuality
@@ -70,7 +101,7 @@ enum AutoQuality
     DistanceBased
     FpsBased
 end enum
-dim shared as integer AUTO_QUALITY = AutoQuality.DistanceBased
+dim shared as integer AUTO_QUALITY = AutoQuality.None
 '===============================================================================
 '= FACE3
 '===============================================================================
@@ -155,6 +186,32 @@ function Mesh3.addFace(face as Face3) as Mesh3
     array_append(faces, face)
     return this
 end function
+'~ function Mesh3.getAverageTextureFaceColor() as integer
+    '~ dim as Mesh3 mesh = spaceship->mesh
+    '~ dim as Face3 face
+    '~ dim as Vector2 uv(2)
+    '~ dim as integer colr, r, g, b, n
+    '~ dim as double rsum, gsum, bsum
+    '~ for i as integer = 0 to ubound(mesh.faces)
+        '~ face = mesh.faces(i)
+        '~ uv(0) = mesh.getUv(face.uvIds(0))
+        '~ for j as integer = 1 to ubound(face.uvIds)-1
+            '~ uv(1) = mesh.getUv(face.uvIds(j))
+            '~ uv(2) = mesh.getUv(face.uvIds(j+1))
+            '~ for k as integer = 0 to ubound(uv)
+                '~ colr = uvToColor(uv(k).x, uv(k).y)
+                '~ rsum += rgb_r(colr)/255
+                '~ gsum += rgb_g(colr)/255
+                '~ bsum += rgb_b(colr)/255
+                '~ n += 1
+            '~ next k
+        '~ next j
+        '~ r = int(255*(rsum/n))
+        '~ g = int(255*(gsum/n))
+        '~ b = int(255*(bsum/n))
+        '~ spaceship->mesh.faces(i).colr = rgb(r, g, b)
+    '~ next i
+'~ end function
 function Mesh3.addNormal(normal as Vector3) as Mesh3
     array_append(normals, normal)
     return this
@@ -589,14 +646,14 @@ for i as integer = 0 to ubound(particles)
     particles(i) = p
 next i
 
-function uvToColor(u as double, v as double) as integer
-    dim as integer i = int(u*255) xor int(v * 255)
+function uvToColor(u as double, v as double) as uinteger
+    dim as uinteger i = int(u*255) xor int(v * 255)
     return rgb(i, i, i)
 end function
 sub drawTexturedTri(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uvb as Vector2, uvc as Vector2, mapFunc as function(x as double, y as double) as integer, quality as integer = 0)
-    dim as uinteger ptr pixel
-    dim as uinteger bpp = SCREEN_BPP, pitch = SCREEN_PITCH
-    dim as any ptr buffer = screenptr, row
+    dim as _long_ bpp = SCREEN_BPP, pitch = SCREEN_PITCH
+    dim as any ptr buffer, rowStart
+    dim as ulong ptr pixel
     dim as Vector2 sideA, sideB, sideC
     dim as Vector2 toplft, btmrgt
     dim as Vector2 sau, sbu, scu
@@ -623,11 +680,12 @@ sub drawTexturedTri(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uv
     sal = 1/sideA.length: sbl = 1/sideB.length: scl = 1/sideC.length
     x0 = int(toplft.x): x1 = int(btmrgt.x)
     y0 = int(toplft.y): y1 = int(btmrgt.y)
+    buffer = screenptr
     if buffer <> 0 then
-        row = buffer + y0*pitch + x0*bpp
+        rowStart = buffer + y0*pitch + x0*bpp
         screenlock
         for y as integer = y0 to y1
-            pixel = row
+            pixel = rowStart
             for x as integer = x0 to x1
                 p = Vector2(x, y)
                 u = 1-dot(p-a, sau) * sal: if u < 0 or u > 1 then pixel += 1: continue for
@@ -637,18 +695,18 @@ sub drawTexturedTri(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uv
                 *pixel = uvToColor(n.x, n.y)
                 pixel += 1
             next x
-            row += pitch
+            rowStart += pitch
         next
         screenunlock
     end if
 end sub
 sub drawTexturedTriLowQ(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uvb as Vector2, uvc as Vector2, mapFunc as function(x as double, y as double) as integer, quality as integer = 0)
-    dim as integer q = 2^quality
-    dim as uinteger ptr imgPixel, pixel
-    dim as uinteger bpp = SCREEN_BPP, pitch = SCREEN_PITCH
-    dim as uinteger imgPitch, imgBpp
+    dim as _long_ bpp = SCREEN_BPP, pitch = SCREEN_PITCH
+    dim as _long_ imgPitch, imgBpp, imgw, imgh
     dim as any ptr buffer = screenptr, row, start
-    dim as any ptr imgBuffer, imgRow, imgStart
+    dim as any ptr imgBuffer, imgRowStart, imgPixelDataStart
+    dim as ulong ptr imgPixel, pixel
+    dim as integer q = 2^quality
     dim as Vector2 sideA, sideB, sideC
     dim as Vector2 toplft, btmrgt
     dim as Vector2 sau, sbu, scu
@@ -679,16 +737,16 @@ sub drawTexturedTriLowQ(a as Vector2, b as Vector2, c as Vector2, uva as Vector2
     x1 = (x1 \ q) * q
     y0 = (y0 \ q) * q
     y1 = (y1 \ q) * q
-    dim as integer imgw = (x1-x0+q)\q
-    dim as integer imgh = (y1-y0+q)\q
+    imgw = (x1-x0+q)\q
+    imgh = (y1-y0+q)\q
     imgBuffer = imagecreate(imgw, imgh)
-    imageinfo imgBuffer, , , imgBpp, imgPitch, imgStart
+    imageinfo imgBuffer, imgw, imgh, imgBpp, imgPitch, imgPixelDataStart
     start = buffer + y0*pitch + x0*bpp
     if buffer <> 0 and imgBuffer <> 0 then
         screenlock
-        imgRow = imgStart
+        imgRowStart = imgPixelDataStart
         for y as integer = y0 to y1 step q
-            imgPixel = imgRow
+            imgPixel = imgRowStart
             for x as integer = x0 to x1 step q
                 p = Vector2(x, y)
                 u = 1-dot(p-a, sau) * sal: if u < 0 or u > 1 then imgPixel += 1: continue for
@@ -698,14 +756,14 @@ sub drawTexturedTriLowQ(a as Vector2, b as Vector2, c as Vector2, uva as Vector2
                 *imgPixel = uvToColor(n.x, n.y)
                 imgPixel += 1
             next x
-            imgRow += imgPitch
+            imgRowStart += imgPitch
         next
         row = start
-        imgRow = imgStart
+        imgRowStart = imgPixelDataStart
         for i as integer = y0 to y1-q step q '- remove -q in future - band-aid for crash bug with very low quality
             for y as integer = 0 to q-1
                 pixel = row
-                imgPixel = imgRow
+                imgPixel = imgRowStart
                 for j as integer = x0 to x1 step q
                     if *imgPixel <> &hffff00ff then
                         for x as integer = 0 to q-1: *pixel = *imgPixel: pixel += 1: next x
@@ -716,7 +774,7 @@ sub drawTexturedTriLowQ(a as Vector2, b as Vector2, c as Vector2, uva as Vector2
                 next j
                 row += pitch
             next y
-            imgRow += imgPitch
+            imgRowStart += imgPitch
         next i
         screenunlock
         imagedestroy(imgBuffer)
@@ -799,7 +857,7 @@ sub renderFaceSolid(byref face as Face3, byref mesh as Mesh3, byref camera as CF
             Vector2(c.x, c.y),_
             colr _
         )
-        window (-SCREEN_ASPECT_X, 1)-(SCREEN_ASPECT_X, -1)
+        window (WINDOW_X0, WINDOW_Y0)-(WINDOW_X1, WINDOW_Y1)
     next i
 end sub
 sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as CFrame3, byref world as CFrame3)
@@ -862,7 +920,7 @@ sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as
                 QUALITY _
             )
         end if
-        window (-SCREEN_ASPECT_X, 1)-(SCREEN_ASPECT_X, -1)
+        window (WINDOW_X0, WINDOW_Y0)-(WINDOW_X1, WINDOW_Y1)
     next i
 end sub
 sub renderFaceWireframe(byref face as Face3, byref mesh as Mesh3, byref camera as CFrame3, byref world as CFrame3, colr as integer = &hd0d0d0, style as integer = &hffff)
@@ -1111,7 +1169,7 @@ end sub
 '= START
 '=======================================================================
 randomize 'SEED
-window (-SCREEN_ASPECT_X, 1)-(SCREEN_ASPECT_X, -1)
+window (WINDOW_X0, WINDOW_Y0)-(WINDOW_X1, WINDOW_Y1)
 
 dim as Mouse2 mouse
 mouse.hide()
@@ -1129,30 +1187,7 @@ dim as Object3 ptr controlObject, focusObject
 
 spaceship->mesh.doubleSided = true
 spaceship->mesh.paintFaces(&hc0c0c0)
-dim as Mesh3 mesh = spaceship->mesh
-dim as Face3 face
-dim as Vector2 uv(2)
-dim as integer colr, r, g, b, n
-dim as double rsum, gsum, bsum
-for i as integer = 0 to ubound(mesh.faces)
-    face = mesh.faces(i)
-    uv(0) = mesh.getUv(face.uvIds(0))
-    for j as integer = 1 to ubound(face.uvIds)-1
-        uv(1) = mesh.getUv(face.uvIds(j))
-        uv(2) = mesh.getUv(face.uvIds(j+1))
-        for k as integer = 0 to ubound(uv)
-            colr = uvToColor(uv(k).x, uv(k).y)
-            rsum += rgb_r(colr)/255
-            gsum += rgb_g(colr)/255
-            bsum += rgb_b(colr)/255
-            n += 1
-        next k
-    next j
-    r = int(255*(rsum/n))
-    g = int(255*(gsum/n))
-    b = int(255*(bsum/n))
-    spaceship->mesh.faces(i).colr = rgb(r, g, b)
-next i
+
 
 controlObject = spaceship
 focusObject = spaceship
@@ -1175,6 +1210,8 @@ dim as Vector3 cameraFollowDistance
 dim as CFrame3 targetCamera
 dim as Vector3 ptr lookAt = 0
 dim as boolean lookBackwards = false
+
+dim as CFrame3 ptr statsframe = @camera
 
 dim as integer keyWait = -1
 
@@ -1204,8 +1241,14 @@ while true
     renderParticles(particles(), cam)
     renderObjects(objectCollection(), cam, world)
 
-    printStringBlock( 1, 1, getOrientationStats(camera), "ORIENTATION", "_", "")
-    printStringBlock(10, 1,    getLocationStats(camera),    "LOCATION", "_", "")
+    if navMode = NavigationMode.Fly then
+        statsframe = @camera
+    else
+        statsframe = focusObject
+    end if
+
+    printStringBlock( 1, 1, getOrientationStats(*statsframe), "ORIENTATION", "_", "")
+    printStringBlock(10, 1,    getLocationStats(*statsframe),    "LOCATION", "_", "")
     
 
     mouse.update
@@ -1287,7 +1330,7 @@ while true
         select case RENDER_MODE
             case RenderMode.Solid
                 RENDER_MODE = RenderMode.Textured
-                AUTO_QUALITY = AutoQuality.DistanceBased
+                'AUTO_QUALITY = AutoQuality.DistanceBased
             case RenderMode.Textured
                 RENDER_MODE = RenderMode.Wireframe
             case RenderMode.Wireframe
@@ -1359,12 +1402,12 @@ while true
         if multikey(SC_W     ) then targetMovement.z =  1
         if multikey(SC_S     ) then targetMovement.z = -1
 
-        if multikey(SC_UP   ) then targetRotation.x = -1
-        if multikey(SC_DOWN ) then targetRotation.x =  1
+        if multikey(SC_UP   ) then targetRotation.x =  1
+        if multikey(SC_DOWN ) then targetRotation.x = -1
         if multikey(SC_RIGHT) then targetRotation.y =  1
         if multikey(SC_LEFT ) then targetRotation.y = -1
-        if multikey(SC_E    ) then targetRotation.z = -1
-        if multikey(SC_Q    ) then targetRotation.z =  1
+        if multikey(SC_E    ) then targetRotation.z =  1
+        if multikey(SC_Q    ) then targetRotation.z = -1
 
         if targetMovement.length > 0 then
             targetMovement = normalize(dot(camera.orientation.matrix(), targetMovement))
@@ -1388,12 +1431,12 @@ while true
         if multikey(SC_W     ) then targetMovement.z =  1
         if multikey(SC_S     ) then targetMovement.z = -1
         
-        if multikey(SC_UP   ) then targetRotation.x = -1
-        if multikey(SC_DOWN ) then targetRotation.x =  1
+        if multikey(SC_UP   ) then targetRotation.x =  1
+        if multikey(SC_DOWN ) then targetRotation.x = -1
         if multikey(SC_RIGHT) then targetRotation.y =  1
         if multikey(SC_LEFT ) then targetRotation.y = -1
-        if multikey(SC_E    ) then targetRotation.z = -1
-        if multikey(SC_Q    ) then targetRotation.z =  1
+        if multikey(SC_E    ) then targetRotation.z =  1
+        if multikey(SC_Q    ) then targetRotation.z = -1
 
         targetVelocity = lerpexp(targetVelocity, dot(focus.orientation.matrix(), targetMovement*10), deltaTime/10)
         targetAngular = lerpexp(targetAngular, targetRotation*2, deltaTime/15)
@@ -1404,6 +1447,7 @@ while true
     focus.position += focus.velocity * deltaTranslate
     angular = lerpexp(angular, targetAngular, deltaTime)
     focus.orientation *= angular * deltaRotate
+    focus.orientation *= Vector3(0, .1, 0) * deltaRotate
     *focusObject = focus
 
     if navMode <> NavigationMode.Fly then

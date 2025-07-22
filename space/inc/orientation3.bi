@@ -1,10 +1,14 @@
+' -----------------------------------------------------------------------------
+' Copyright (c) 2025 Joe King
+' See main file or LICENSE for license and build info.
+' -----------------------------------------------------------------------------
 #include once "vector3.bi"
 type Orientation3
     matrix(0 to 2) as Vector3 = _
     {_
-        type(1,  0,  0),_
+        type(-1,  0,  0),_
         type(0,  1,  0),_
-        type(0,  0,  1) _
+        type(0,  0,  -1) _
     }
     declare constructor ()
     declare constructor (o0 as Vector3, o1 as Vector3, o2 as Vector3)

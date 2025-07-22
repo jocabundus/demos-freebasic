@@ -1,3 +1,7 @@
+' -----------------------------------------------------------------------------
+' Copyright (c) 2025 Joe King
+' See main file or LICENSE for license and build info.
+' -----------------------------------------------------------------------------
 #include once "vector3.bi"
 #include once "orientation3.bi"
 type CFrame3

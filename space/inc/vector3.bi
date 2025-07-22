@@ -1,3 +1,7 @@
+' -----------------------------------------------------------------------------
+' Copyright (c) 2025 Joe King
+' See main file or LICENSE for license and build info.
+' -----------------------------------------------------------------------------
 enum Axis3
     X = 0
     Y = 1
@@ -26,6 +30,12 @@ operator abs (a as Vector3) as Vector3
 end operator
 operator int (a as Vector3) as Vector3
     return type(int(a.x), int(a.y), int(a.z))
+end operator
+operator = (a as Vector3, b as Vector3) as boolean
+    return a.x=b.x and a.y=b.y and a.z=b.z
+end operator
+operator <> (a as Vector3, b as Vector3) as boolean
+    return a.x<>b.x or a.y<>b.y or a.z<>b.z
 end operator
 operator - (a as Vector3) as Vector3
     return type(-a.x, -a.y, -a.z)
