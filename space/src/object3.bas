@@ -2,22 +2,10 @@
 ' Copyright (c) 2025 Joe King
 ' See main file or LICENSE for license and build info.
 ' -----------------------------------------------------------------------------
-#include once "cframe3.bi"
-#include once "mesh3.bi"
-#include once "vector2.bi"
-#include once "vector3.bi"
+#include once "object3.bi"
 
-namespace __object3_internal__
-    declare sub string_split(subject as string, delim as string, pieces() as string)
-end namespace
+declare sub string_split(subject as string, delim as string, pieces() as string)
 
-type Object3 extends CFrame3
-    id as integer
-    velocity as Vector3
-    mesh as Mesh3
-    declare function loadFile(filename as string) as integer
-    declare function transform() as Object3
-end type
 function Object3.loadFile(filename as string) as integer
     dim as string datum, pieces(any), subpieces(any), s, p
     dim as boolean calcNormals = true
@@ -25,7 +13,7 @@ function Object3.loadFile(filename as string) as integer
     open filename for input as #f
         while not eof(f)
             line input #f, s
-            __object3_internal__.string_split(s, " ", pieces())
+            string_split(s, " ", pieces())
             for i as integer = 0 to ubound(pieces)
                 dim as string datum = pieces(i)
                 select case datum
@@ -59,7 +47,7 @@ function Object3.loadFile(filename as string) as integer
                             vertexId = -1
                             dim as string p = pieces(1 + j)
                             if instr(p, "/") then
-                                __object3_internal__.string_split(p, "/", subpieces())
+                                string_split(p, "/", subpieces())
                                 for k as integer = 0 to ubound(subpieces)
                                     if subpieces(k) <> "" then
                                         select case k
@@ -101,7 +89,7 @@ function Object3.loadFile(filename as string) as integer
     mesh.buildBsp()
     return 0
 end function
-function Object3.transform() as Object3
+function Object3.toWorld() as Object3
     for i as integer = 0 to ubound(mesh.vertexes)
         dim as Vector3 v = mesh.vertexes(i)
         mesh.vertexes(i) = Vector3(_
@@ -121,23 +109,21 @@ function Object3.transform() as Object3
     return this
 end function
 
-namespace __object3_internal__
-    sub string_split(subject as string, delim as string, pieces() as string)
-        dim as integer i, j, index = -1
-        dim as string s
-        i = 1
-        while i > 0
-            s = ""
-            j = instr(i, subject, delim)
-            if j then
-                s = mid(subject, i, j-i)
-                i = j+1
-            else
-                s = mid(subject, i)
-                i = 0
-            end if
-            index += 1: redim preserve pieces(index)
-            pieces(index) = s
-        wend
-    end sub
-end namespace
+private sub string_split(subject as string, delim as string, pieces() as string)
+    dim as integer i, j, index = -1
+    dim as string s
+    i = 1
+    while i > 0
+        s = ""
+        j = instr(i, subject, delim)
+        if j then
+            s = mid(subject, i, j-i)
+            i = j+1
+        else
+            s = mid(subject, i)
+            i = 0
+        end if
+        index += 1: redim preserve pieces(index)
+        pieces(index) = s
+    wend
+end sub

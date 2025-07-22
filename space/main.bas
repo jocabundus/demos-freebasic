@@ -14,15 +14,32 @@
 '    fbc64 %f -w all -gen gcc -O 3 -Wc -march=native
 ' -----------------------------------------------------------------------------
 
+#cmdline "-i inc/"
+#cmdline "-i src/inc/"
+
+#cmdline "-b src/mouse2.bas"
+#cmdline "-b src/vector2.bas"
+#cmdline "-b src/vector3.bas"
+#cmdline "-b src/orientation3.bas"
+#cmdline "-b src/cframe3.bas"
+#cmdline "-b src/mesh3.bas"
+#cmdline "-b src/object3.bas"
+#cmdline "-b src/colorspace.bas"
+#cmdline "-b src/particle.bas"
+#cmdline "-b src/helpers.bas"
+
 #include once "fbgfx.bi"
-#include once "inc/object3.bi"
-#include once "inc/cframe3.bi"
-#include once "inc/mesh3.bi"
-#include once "inc/vector2.bi"
-#include once "inc/vector3.bi"
-#include once "inc/mouse2.bi"
-#include once "inc/helpers.bi"
-#include once "inc/defines.bi"
+#include once "mouse2.bi"
+#include once "vector2.bi"
+#include once "vector3.bi"
+#include once "orientation3.bi"
+#include once "cframe3.bi"
+#include once "mesh3.bi"
+#include once "object3.bi"
+#include once "colorspace.bi"
+#include once "particle.bi"
+#include once "helpers.bi"
+#include once "defines.bi"
 using FB
 
 #ifdef __FB_64BIT__
@@ -81,6 +98,57 @@ enum AutoQuality
 end enum
 dim shared as integer AUTO_QUALITY = AutoQuality.DistanceBased
 
+dim shared as integer texSize = 64
+dim shared as uinteger texture(texSize-1, texSize-1)
+scope
+    dim as double a, b, u, v
+    for y as double = 0 to texSize-1
+        for x as double = 0 to texSize-1
+            a = x / texSize
+            b = y / texSize
+            u = sin(a*2*PI)
+            v = cos(a*2*PI)
+            texture(x, y) = ColorSpace2.SampleColor(Vector2(u, v)*(a+b)*3.9, 4)
+        next x
+    next y
+end scope
+
+dim shared as ParticleType particles(NUM_PARTICLES-1)
+
+declare sub init()
+declare sub main()
+declare sub shutdown()
+init
+main
+end
+
+sub init()
+    for i as integer = 0 to ubound(particles)
+        dim as ParticleType p = type(_
+            Vector3(_
+                FIELD_SIZE/2 * rnd*sin(2*PI*rnd),_
+                FIELD_SIZE/2 * rnd*sin(2*PI*rnd),_
+                FIELD_SIZE/2 * rnd*sin(2*PI*rnd) _
+            ),_
+            ColorSpace2.SampleColor(2*pi*rnd, rnd, 2)_
+        )
+        particles(i) = p
+    next i
+end sub
+
+sub shutdown()
+end sub
+
+'=======================================================================
+'= WORLD TRANSFORM
+'=======================================================================
+function localToWorld overload(position as vector3, world as CFrame3) as Vector3
+    return Vector3(_
+        dot(world.vRight  , position),_
+        dot(world.vUp     , position),_
+        dot(world.vForward, position) _
+    )
+end function
 
 '=======================================================================
 '= VIEW TRANSFORM
@@ -92,7 +160,7 @@ function worldToView(position as vector3, camera as CFrame3, skipTranslation as 
     return Vector3(_
         dot(camera.vRight  , position),_
         dot(camera.vUp     , position),_
-        dot(camera.vForward, position) _
+       -dot(camera.vForward, position) _
     )
 end function
 
@@ -105,67 +173,11 @@ end function
 function viewToScreen(vp as vector3, fov as double = 1) as Vector2
     dim as Vector2 v2
     vp.z *= fov
-    v2.x = (vp.x / vp.z) * 2
-    v2.y = (vp.y / vp.z) * 2
+    v2.x = (vp.x / -vp.z) * 2
+    v2.y = (vp.y / -vp.z) * 2
     return v2
 end function
 
-'=======================================================================
-'= PARTICLETYPE
-'=======================================================================
-type ParticleType
-    colr as integer
-    position as Vector3
-    twinkleAmp as double   = rnd * 32
-    twinkleFreq as double  = rnd * 1
-    twinklePhase as double = rnd * 2 * PI
-    declare constructor ()
-    declare constructor (position as Vector3, colr as integer)
-    declare function getTwinkleColor() as integer
-end type
-constructor ParticleType
-end constructor
-constructor ParticleType (position as Vector3, colr as integer)
-    this.position = position
-    this.colr = colr
-end constructor
-function ParticleType.getTwinkleColor() as integer
-    dim as integer r, g, b
-    dim as double shift = _
-    twinkleAmp * sin(2 * PI * frac(timer * twinkleFreq) + twinklePhase)
-    r = clamp(rgb_r(colr) + int(shift), 0, 255)
-    g = clamp(rgb_g(colr) + int(shift), 0, 255)
-    b = clamp(rgb_b(colr) + int(shift), 0, 255)
-    return rgb(r, g, b)
-end function
-
-
-
-dim as ParticleType particles(NUM_PARTICLES-1)
-for i as integer = 0 to ubound(particles)
-    dim as ParticleType p = type(_
-        Vector3(_
-            FIELD_SIZE/2 * rnd*sin(2*PI*rnd),_
-            FIELD_SIZE/2 * rnd*sin(2*PI*rnd),_
-            FIELD_SIZE/2 * rnd*sin(2*PI*rnd) _
-        ),_
-        pickStarColor(rnd*2*PI, rnd, 2)_
-    )
-    particles(i) = p
-next i
-
-dim shared as integer texSize = 64
-dim shared as uinteger texture(texSize-1, texSize-1)
-dim as double a, b, u, v
-for y as double = 0 to texSize-1
-    for x as double = 0 to texSize-1
-        a = x / texSize
-        b = y / texSize
-        u = sin(a*2*PI)
-        v = cos(a*2*PI)
-        texture(x, y) = pickStarColor(Vector2(u, v)*(a+b)*3.9, 4)
-    next x
-next y
 function uvToColor(u as double, v as double) as uinteger
     return texture(int(texSize * u), int(texSize * v))
 end function
@@ -349,7 +361,7 @@ sub renderFaceSolid(byref face as Face3, byref mesh as Mesh3, byref camera as CF
     for i as integer = 0 to ubound(face.vertexIds)
         worldVertex   = mesh.getVertex(face.vertexIds(i))
         viewVertex(i) = worldToView(worldVertex, camera)
-        if viewVertex(i).z < 1 then
+        if viewVertex(i).z > -1 then
             exit sub
         end if
     next i
@@ -399,7 +411,7 @@ sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as
     for i as integer = 0 to ubound(face.vertexIds)
         worldVertex   = mesh.getVertex(face.vertexIds(i))
         viewVertex(i) = worldToView(worldVertex, camera)
-        if viewVertex(i).z < 1 then
+        if viewVertex(i).z > -1 then
             exit sub
         end if
     next i
@@ -449,7 +461,7 @@ sub renderFaceWireframe(byref face as Face3, byref mesh as Mesh3, byref camera a
     for i as integer = 0 to ubound(face.vertexIds)
         worldVertex   = mesh.getVertex(face.vertexIds(i))
         viewVertex(i) = worldToView(worldVertex, camera)
-        if viewVertex(i).z < 1 then
+        if viewVertex(i).z > -1 then
             exit sub
         end if
     next i
@@ -483,7 +495,12 @@ sub renderBspFaces(node as BspNode3 ptr, byref mesh as Mesh3, byref camera as CF
         end if
         select case RENDER_MODE
             case RenderMode.Solid   : renderFaceSolid face, mesh, camera, world
-            case RenderMode.Textured: renderFaceTextured face, mesh, camera, world
+            case RenderMode.Textured
+                if ubound(face.uvIds) >= 0 then
+                    renderFaceTextured face, mesh, camera, world
+                else
+                    renderFaceSolid face, mesh, camera, world
+                end if
             case RenderMode.Wireframe
                 if dt > 0 then
                     renderFaceWireframe face, mesh, camera, world
@@ -498,8 +515,8 @@ sub renderObjects(objects() as Object3, byref camera as CFrame3, byref world as 
     dim as Object3 o
     dim as double dist
     for i as integer = 0 to ubound(objects)
-        o = objects(i)
-        o.transform()
+        objects(i).world = world
+        o = objects(i).toWorld()
         if AUTO_QUALITY = AutoQuality.DistanceBased then
             dist = (o.position - camera.position).length
             select case dist
@@ -524,73 +541,12 @@ sub renderParticles(particles() as ParticleType, camera as CFrame3)
     for i as integer = 0 to ubound(particles)
         particle = particles(i)
         vertex = worldToView(particle.position, camera)
-        if vertex.z > 1 then
+        if vertex.z < -1 then
             coords = viewToScreen(vertex)
             radius = abs(1/vertex.z) * 0.2
             circle(coords.x, coords.y), radius, particle.getTwinkleColor()
         end if
     next i
-end sub
-
-sub printSafe(row as integer, col as integer, text as string, bounds() as integer)
-    dim as integer clip0 = 1, clip1 = len(text)
-    if row >= bounds(0) and row <= bounds(2) then
-        if col+len(text) >= bounds(1) and col <= bounds(3) then
-            if col < bounds(1) then
-                clip0 += bounds(1) - col
-                clip1 -= bounds(1) - col
-            end if
-            if col + clip1 > bounds(3) then
-                clip1 -= (col + clip1) - bounds(3)
-            end if
-            locate row, col + (clip0 - 1)
-            print mid(text, clip0, clip1);
-        end if
-    end if
-end sub
-
-sub printStringBlock(row as integer, col as integer, text as string, header as string = "", border as string = "", footer as string = "")
-    dim as integer i = 1, j, maxw
-    dim as string s
-    while i > 0
-        j = instr(i, text, "$")
-        if j then
-            s = mid(text, i, j-i)
-            i = j+1
-        else
-            s = mid(text, i)
-            i = 0
-        end if
-        if len(s) > maxw then
-            maxw = len(s)
-        end if
-    wend
-    if header <> "" then
-        dim as string buffer = string(maxw, iif(border <> "", border, " "))
-        mid(buffer, 1) = header
-        locate   row, col: print buffer;
-        locate row+1, col: print string(maxw, " ");
-        row += 2
-    end if
-    i = 1
-    while i > 0
-        j = instr(i, text, "$")
-        if j then
-            s = mid(text, i, j-i)
-            i = j+1
-        else
-            s = mid(text, i)
-            i = 0
-        end if
-        if s = "" then
-            s = space(maxw)
-        end if
-        locate row, col: print s;
-        row += 1
-    wend
-    if footer <> "" then
-        locate row, col: print string(maxw, footer);
-    end if
 end sub
 
 sub renderUI(mouse as Mouse2, reticleColor as integer = &h808080, arrowColor as integer = &hd0b000)
@@ -636,314 +592,320 @@ end sub
 '=======================================================================
 '= START
 '=======================================================================
-randomize
-window (WINDOW_X0, WINDOW_Y0)-(WINDOW_X1, WINDOW_Y1)
+sub main()
+    randomize
+    window (WINDOW_X0, WINDOW_Y0)-(WINDOW_X1, WINDOW_Y1)
 
-dim as Mouse2 mouse
-mouse.hide()
-mouse.setMode(Mouse2Mode.Viewport)
+    dim as Mouse2 mouse
+    mouse.hide()
+    mouse.setMode(Mouse2Mode.Viewport)
 
-dim as CFrame3 cam, camera, world
-dim as Object3 objectCollection(any)
-'dim as Object3 ptr spaceship = object_collection_add("mesh/spaceship-tris.obj", objectCollection())
-'dim as Object3 ptr spaceship = object_collection_add("mesh/spaceship-quads.obj", objectCollection())
-dim as Object3 ptr spaceship = object_collection_add("mesh/spaceship3.obj", objectCollection())
-'dim as Object3 ptr spaceship = object_collection_add("mesh/spaceship3-tris.obj", objectCollection())
-dim as Object3 ptr controlObject, focusObject
+    dim as CFrame3 cam, camera, world
+    dim as Object3 objectCollection(any)
+    'dim as Object3 ptr spaceship = object_collection_add("mesh/spaceship-tris.obj", objectCollection())
+    'im as Object3 ptr spaceship = object_collection_add("mesh/spaceship-quads.obj", objectCollection())
+    dim as Object3 ptr spaceship = object_collection_add("mesh/spaceship3.obj", objectCollection())
+    'dim as Object3 ptr spaceship = object_collection_add("mesh/spaceship3-tris.obj", objectCollection())
+    dim as Object3 ptr controlObject, focusObject
 
-'camera.orientation *= Vector3(0, rad(180), 0)
+    'camera.orientation *= Vector3(0, rad(180), 0)
 
-spaceship->mesh.doubleSided = true
-spaceship->mesh.paintFaces(&hc0c0c0)
+    spaceship->mesh.doubleSided = true
+    spaceship->mesh.paintFaces(&hc0c0c0)
 
-camera.position = spaceship->position + normalize(Vector3(-1+2*rnd,rnd,-1+2*rnd)) * (15+30*rnd)
-camera = camera.lookAt(spaceship->position)
+    camera.position = spaceship->position + normalize(Vector3(-1+2*rnd,rnd,-1+2*rnd)) * (15+30*rnd)
+    camera = camera.lookAt(spaceship->position)
 
-controlObject = spaceship
-focusObject = spaceship
+    controlObject = spaceship
+    focusObject = spaceship
 
-dim as double rotateSpeed    = 1
-dim as double translateSpeed = 1
-dim as double speedFactor    = 10
-screenset 1, 0
+    dim as double rotateSpeed    = 1
+    dim as double translateSpeed = 1
+    dim as double speedFactor    = 10
+    screenset 1, 0
 
-dim as double  fpsTimeStart = timer
-dim as integer fps, frameCount
+    dim as double  fpsTimeStart = timer
+    dim as integer fps, frameCount
 
-dim as double frameTimeStart = timer
-dim as double frameTimeEnd   = 0
+    dim as double frameTimeStart = timer
+    dim as double frameTimeEnd   = 0
 
-dim as Vector3 movement, targetMovement
-dim as Vector3 rotation, targetRotation
-dim as Vector3 angular, targetAngular, targetVelocity
+    dim as Vector3 movement, targetMovement
+    dim as Vector3 rotation, targetRotation
+    dim as Vector3 angular, targetAngular, targetVelocity
 
-dim as Vector3 cameraFollowDistance
-dim as CFrame3 targetCamera
-dim as Vector3 ptr lookAt = 0
-dim as boolean lookBackwards = false
+    dim as Vector3 cameraFollowDistance
+    dim as CFrame3 targetCamera
+    dim as Vector3 ptr lookAt = 0
+    dim as boolean lookBackwards = false
 
-dim as CFrame3 ptr statsframe = @camera
-dim as CFrame3 ptr orbitTarget
+    dim as CFrame3 ptr statsframe = @camera
+    dim as CFrame3 ptr orbitTarget
 
-dim as integer keyWait = -1
+    dim as integer keyWait = -1
 
-enum NavigationMode
-    Fly
-    FollowClose
-    OrbitTarget
-    FollowNear
-    FollowMid
-    FollowFar
-    FollowVeryFar
-end enum
-dim as integer navMode = NavigationMode.OrbitTarget
-orbitTarget = focusObject
-angular = normalize(Vector3(rnd,rnd,rnd))/10
-targetAngular = angular
+    enum NavigationMode
+        Fly
+        FollowClose
+        OrbitTarget
+        FollowNear
+        FollowMid
+        FollowFar
+        FollowVeryFar
+    end enum
+    dim as integer navMode = NavigationMode.OrbitTarget
+    orbitTarget = focusObject
+    'angular = normalize(Vector3(rnd,rnd,rnd))/10
+    'targetAngular = angular
 
-setmouse pmap(0, 0), pmap(0, 1)
-while true
-    if multikey(SC_ESCAPE) then
-        exit while
-    end if
+    setmouse pmap(0, 0), pmap(0, 1)
+    while true
+        if multikey(SC_ESCAPE) then
+            exit while
+        end if
 
-    cls
-    dim as Object3 focus = *focusObject
-    
-    cam = camera
-    if lookBackwards then
-        cam.orientation *= Vector3(0, rad(180), 0)
-    end if
-    renderParticles(particles(), cam)
-    renderObjects(objectCollection(), cam, world)
-
-    if navMode = NavigationMode.Fly then
-        statsframe = @camera
-    else
-        statsframe = focusObject
-    end if
-
-    mouse.update
-    frameCount += 1
-    if timer - fpsTimeStart >= 1 then
-        fps = frameCount
-        fpsTimeStart = timer
-        frameCount = 0
-    end if
-
-    if RENDER_MODE <> RenderMode.None and navMode <> NavigationMode.OrbitTarget then
-        printStringBlock( 1, 1, getOrientationStats(*statsframe), "ORIENTATION", "_", "")
-        printStringBlock(10, 1,    getLocationStats(*statsframe),    "LOCATION", "_", "")
-
+        cls
+        dim as Object3 focus = *focusObject
         
-        if navMode <> NavigationMode.OrbitTarget then
-            renderUI mouse
+        cam = camera
+        if lookBackwards then
+            cam.orientation *= Vector3(0, rad(180), 0)
+        end if
+        renderParticles(particles(), cam)
+        renderObjects(objectCollection(), cam, world)
+
+        if navMode = NavigationMode.Fly then
+            statsframe = @camera
+        else
+            statsframe = focusObject
+        end if
+
+        mouse.update
+        frameCount += 1
+        if timer - fpsTimeStart >= 1 then
+            fps = frameCount
+            fpsTimeStart = timer
+            frameCount = 0
+        end if
+
+        if RENDER_MODE <> RenderMode.None and navMode <> NavigationMode.OrbitTarget then
+            printStringBlock( 1, 1, getOrientationStats(*statsframe), "ORIENTATION", "_", "")
+            printStringBlock(10, 1,    getLocationStats(*statsframe),    "LOCATION", "_", "")
+
+            
+            if navMode <> NavigationMode.OrbitTarget then
+                renderUI mouse
+            end if
+            
+
+            dim as integer row = 15
+            dim as string buffer = space(21)
+            select case RENDER_MODE
+                case RenderMode.Solid    : mid(buffer, 2) = "Solid"
+                case RenderMode.Textured : mid(buffer, 2) = "Texture"
+                case RenderMode.Wireframe: mid(buffer, 2) = "Wireframe"
+            end select
+            printStringBlock(row, 1, buffer, "RENDER MODE", "_", "")
+
+            if RENDER_MODE = RenderMode.Textured then
+                buffer = space(21)
+                mid(buffer,  2) = str(QUALITY+1)
+                mid(buffer,  4) = iif(AUTO_QUALITY = AutoQuality.DistanceBased, "=automatic=", "=manual=")
+                row += 5
+                printStringBlock(row, 1, buffer, "QUALITY", "_", "")
+            end if
+
+            buffer = space(21)
+            mid(buffer, 1) = format_decimal(speedFactor, 1)
+            row += 5
+            printStringBlock(row, 1, buffer, "SPEED FACTOR", "_", "")
+
+            buffer = space(21)
+            mid(buffer, 1) = format_decimal(fps, 1)
+            row += 5
+            printStringBlock(row, 1, buffer, "FPS", "_", "")
         end if
         
+        screencopy 1, 0
+        dim as double deltaTime = timer - frameTimeStart
+        dim as double deltaRotate = deltaTime * rotateSpeed
+        dim as double deltaTranslate = deltaTime * translateSpeed
 
-        dim as integer row = 15
-        dim as string buffer = space(21)
-        select case RENDER_MODE
-            case RenderMode.Solid    : mid(buffer, 2) = "Solid"
-            case RenderMode.Textured : mid(buffer, 2) = "Texture"
-            case RenderMode.Wireframe: mid(buffer, 2) = "Wireframe"
-        end select
-        printStringBlock(row, 1, buffer, "RENDER MODE", "_", "")
+        frameTimeStart = timer
+
+        if multikey(SC_PAGEUP  ) or multikey(SC_PLUS) or multikey(SC_EQUALS) then
+            speedFactor = clamp(speedFactor + 3*deltaTime, 1, 50)
+        elseif multikey(SC_PAGEDOWN) or multikey(SC_MINUS) then
+            speedFactor = clamp(speedFactor - 3*deltaTime, 1, 50)
+        end if
+        speedFactor = clamp(speedFactor + 2*mouse.wheelDelta, 1, 50)
+        deltaRotate = deltaTime * rotateSpeed
+        deltaTranslate = deltaTime * speedFactor
+
+        if multikey(SC_BACKSPACE) then
+            lookBackwards = true
+        else
+            lookBackwards = false
+        end if
+
+        lookAt = 0
+        if multikey(SC_CONTROL) <> 0 or mouse.middleDown then
+            lookAt = @focus.position
+        end if
 
         if RENDER_MODE = RenderMode.Textured then
-            buffer = space(21)
-            mid(buffer,  2) = str(QUALITY+1)
-            mid(buffer,  4) = iif(AUTO_QUALITY = AutoQuality.DistanceBased, "=automatic=", "=manual=")
-            row += 5
-            printStringBlock(row, 1, buffer, "QUALITY", "_", "")
+            if multikey(SC_F1) then QUALITY = 0: AUTO_QUALITY = AutoQuality.None
+            if multikey(SC_F2) then QUALITY = 1: AUTO_QUALITY = AutoQuality.None
+            if multikey(SC_F3) then QUALITY = 2: AUTO_QUALITY = AutoQuality.None
+            if multikey(SC_F4) then QUALITY = 3: AUTO_QUALITY = AutoQuality.None
+            if multikey(SC_F5) then QUALITY = 4: AUTO_QUALITY = AutoQuality.None
+            if multikey(SC_F6) then QUALITY = 5: AUTO_QUALITY = AutoQuality.None
         end if
 
-        buffer = space(21)
-        mid(buffer, 1) = format_decimal(speedFactor, 1)
-        row += 5
-        printStringBlock(row, 1, buffer, "SPEED FACTOR", "_", "")
+        if multikey(SC_R) then camera.orientation = Orientation3()
+        if multikey(SC_X) then camera.orientation = Orientation3() * Vector3(pi/2, 0, 0)
+        if multikey(SC_Y) then camera.orientation = Orientation3() * Vector3(0, pi/2, 0)
+        if multikey(SC_Z) then camera.orientation = Orientation3() * Vector3(0, 0, pi/2)
 
-        buffer = space(21)
-        mid(buffer, 1) = format_decimal(fps, 1)
-        row += 5
-        printStringBlock(row, 1, buffer, "FPS", "_", "")
-    end if
-    
-    screencopy 1, 0
-    dim as double deltaTime = timer - frameTimeStart
-    dim as double deltaRotate = deltaTime * rotateSpeed
-    dim as double deltaTranslate = deltaTime * translateSpeed
+        if multikey(SC_TAB) and keyWait = -1 then
+            keyWait = SC_TAB
+            select case RENDER_MODE
+                case RenderMode.None
+                    RENDER_MODE = RenderMode.Wireframe
+                case RenderMode.Solid
+                    RENDER_MODE = RenderMode.Textured
+                    AUTO_QUALITY = AutoQuality.DistanceBased
+                case RenderMode.Textured
+                    RENDER_MODE = RenderMode.None
+                case RenderMode.Wireframe
+                    RENDER_MODE = RenderMode.Solid
+            end select
+        elseif not multikey(SC_TAB) and keyWait = SC_TAB then
+            keyWait = -1
+        end if
 
-    frameTimeStart = timer
+        if multikey(SC_1) then
+            navMode = NavigationMode.Fly
+        end if
+        if multikey(SC_3) then
+            navMode = NavigationMode.OrbitTarget
+            'angular = normalize(Vector3(rnd,rnd,rnd))/10
+            'targetAngular = angular
+        end if
+        
+        if multikey(SC_2) and keyWait = -1 then
+            keyWait = SC_2
+            select case navMode
+                case NavigationMode.FollowVeryFar, NavigationMode.Fly
+                    navMode = NavigationMode.FollowClose
+                case NavigationMode.FollowClose
+                    navMode = NavigationMode.FollowNear
+                case NavigationMode.FollowNear
+                    navMode = NavigationMode.FollowMid
+                case NavigationMode.FollowMid
+                    navMode = NavigationMode.FollowFar
+                case NavigationMode.FollowFar
+                    navMode = NavigationMode.FollowVeryFar
+            end select
+        elseif not multikey(SC_2) and keyWait = SC_2 then
+            keyWait = -1
+        end if
 
-    if multikey(SC_PAGEUP  ) or multikey(SC_PLUS) or multikey(SC_EQUALS) then
-        speedFactor = clamp(speedFactor + 3*deltaTime, 1, 50)
-    elseif multikey(SC_PAGEDOWN) or multikey(SC_MINUS) then
-        speedFactor = clamp(speedFactor - 3*deltaTime, 1, 50)
-    end if
-    speedFactor = clamp(speedFactor + 2*mouse.wheelDelta, 1, 50)
-    deltaRotate = deltaTime * rotateSpeed
-    deltaTranslate = deltaTime * speedFactor
-
-    if multikey(SC_BACKSPACE) then
-        lookBackwards = true
-    else
-        lookBackwards = false
-    end if
-
-    lookAt = 0
-    if multikey(SC_CONTROL) <> 0 or mouse.middleDown then
-        lookAt = @focus.position
-    end if
-
-    if RENDER_MODE = RenderMode.Textured then
-        if multikey(SC_F1) then QUALITY = 0: AUTO_QUALITY = AutoQuality.None
-        if multikey(SC_F2) then QUALITY = 1: AUTO_QUALITY = AutoQuality.None
-        if multikey(SC_F3) then QUALITY = 2: AUTO_QUALITY = AutoQuality.None
-        if multikey(SC_F4) then QUALITY = 3: AUTO_QUALITY = AutoQuality.None
-        if multikey(SC_F5) then QUALITY = 4: AUTO_QUALITY = AutoQuality.None
-        if multikey(SC_F6) then QUALITY = 5: AUTO_QUALITY = AutoQuality.None
-    end if
-
-    if multikey(SC_TAB) and keyWait = -1 then
-        keyWait = SC_TAB
-        select case RENDER_MODE
-            case RenderMode.None
-                RENDER_MODE = RenderMode.Wireframe
-            case RenderMode.Solid
-                RENDER_MODE = RenderMode.Textured
-                AUTO_QUALITY = AutoQuality.DistanceBased
-            case RenderMode.Textured
-                RENDER_MODE = RenderMode.None
-            case RenderMode.Wireframe
-                RENDER_MODE = RenderMode.Solid
-        end select
-    elseif not multikey(SC_TAB) and keyWait = SC_TAB then
-        keyWait = -1
-    end if
-
-    if multikey(SC_1) then
-        navMode = NavigationMode.Fly
-    end if
-    if multikey(SC_3) then
-        navMode = NavigationMode.OrbitTarget
-        angular = normalize(Vector3(rnd,rnd,rnd))/10
-        targetAngular = angular
-    end if
-    
-    if multikey(SC_2) and keyWait = -1 then
-        keyWait = SC_2
         select case navMode
-            case NavigationMode.FollowVeryFar, NavigationMode.Fly
-                navMode = NavigationMode.FollowClose
-            case NavigationMode.FollowClose
-                navMode = NavigationMode.FollowNear
-            case NavigationMode.FollowNear
-                navMode = NavigationMode.FollowMid
-            case NavigationMode.FollowMid
-                navMode = NavigationMode.FollowFar
-            case NavigationMode.FollowFar
-                navMode = NavigationMode.FollowVeryFar
+            case NavigationMode.FollowClose  : cameraFollowDistance = Vector3(0, 2, 8)
+            case NavigationMode.FollowNear   : cameraFollowDistance = Vector3(0, 3, 12)
+            case NavigationMode.FollowMid    : cameraFollowDistance = Vector3(0, 6, 24)
+            case NavigationMode.FollowFar    : cameraFollowDistance = Vector3(0, 15, 36)
+            case NavigationMode.FollowVeryFar: cameraFollowDistance = Vector3(0, 24, 96)
         end select
-    elseif not multikey(SC_2) and keyWait = SC_2 then
-        keyWait = -1
-    end if
 
-    select case navMode
-        case NavigationMode.FollowClose  : cameraFollowDistance = Vector3(0, 2, 8)
-        case NavigationMode.FollowNear   : cameraFollowDistance = Vector3(0, 3, 12)
-        case NavigationMode.FollowMid    : cameraFollowDistance = Vector3(0, 6, 24)
-        case NavigationMode.FollowFar    : cameraFollowDistance = Vector3(0, 15, 36)
-        case NavigationMode.FollowVeryFar: cameraFollowDistance = Vector3(0, 24, 96)
-    end select
+        targetMovement = Vector3(0, 0, 0)
+        targetRotation = Vector3(0, 0, 0)
 
-    targetMovement = Vector3(0, 0, 0)
-    targetRotation = Vector3(0, 0, 0)
+        select case navMode
+        case NavigationMode.Fly
+            dim as double mx, my
+            mx = mouse.x
+            my = mouse.y * SCREEN_ASPECT_X
+            mx *= 1.5
+            my *= 1.5
+            if mouse.leftDown then
+                targetRotation.y  = mx
+                targetRotation.x -= my
+            elseif mouse.rightDown then
+                dim as Vector2 m = type(mx, my)
+                m = rotate(m, atan2(targetRotation.z, targetRotation.x))
+                targetRotation.x -= my
+                targetRotation.z -= mx
+            end if
 
-    select case navMode
-    case NavigationMode.Fly
-        dim as double mx, my
-        mx = mouse.x
-        my = mouse.y * SCREEN_ASPECT_X
-        mx *= 1.5
-        my *= 1.5
-        if mouse.leftDown then
-            targetRotation.y  = mx
-            targetRotation.x -= my
-        elseif mouse.rightDown then
-            dim as Vector2 m = type(mx, my)
-            m = rotate(m, atan2(targetRotation.z, targetRotation.x))
-            targetRotation.x -= my
-            targetRotation.z -= mx
+            if multikey(SC_D     ) then targetMovement.x =  1
+            if multikey(SC_A     ) then targetMovement.x = -1
+            if multikey(SC_SPACE ) then targetMovement.y =  1
+            if multikey(SC_LSHIFT) then targetMovement.y = -1
+            if multikey(SC_W     ) then targetMovement.z =  1
+            if multikey(SC_S     ) then targetMovement.z = -1
+
+            if multikey(SC_UP   ) then targetRotation.x =  1
+            if multikey(SC_DOWN ) then targetRotation.x = -1
+            if multikey(SC_RIGHT) then targetRotation.y =  1
+            if multikey(SC_LEFT ) then targetRotation.y = -1
+            if multikey(SC_E    ) then targetRotation.z =  1
+            if multikey(SC_Q    ) then targetRotation.z = -1
+
+            if targetMovement.length > 0 then
+                targetMovement = normalize(dot(camera.orientation.matrix(), targetMovement))
+            end if
+            'if targetRotation.length > 1 then
+            '    targetRotation = targetRotation.unit
+            'end if
+            movement = lerpexp(movement, targetMovement, deltaTime)
+            rotation = lerpexp(rotation, targetRotation, deltaTime)
+            camera += movement * deltaTranslate
+                    
+            camera.orientation *= rotation * deltaRotate
+            if lookAt then
+                camera = camera.lookAt(*lookAt)
+            end if
+        case NavigationMode.OrbitTarget
+            camera = camera.lookAt(focus, focus.Orientation.vUp)
+            camera.position += cross(world.vUp, normalize(focus.position - camera.position)) * deltaTime * 3
+        case else
+            if multikey(SC_D     ) then targetMovement.x =  1
+            if multikey(SC_A     ) then targetMovement.x = -1
+            if multikey(SC_SPACE ) then targetMovement.y =  1
+            if multikey(SC_LSHIFT) then targetMovement.y = -1
+            if multikey(SC_W     ) then targetMovement.z =  1
+            if multikey(SC_S     ) then targetMovement.z = -1
+            
+            if multikey(SC_UP   ) then targetRotation.x =  1
+            if multikey(SC_DOWN ) then targetRotation.x = -1
+            if multikey(SC_RIGHT) then targetRotation.y =  1
+            if multikey(SC_LEFT ) then targetRotation.y = -1
+            if multikey(SC_E    ) then targetRotation.z =  1
+            if multikey(SC_Q    ) then targetRotation.z = -1
+
+            targetVelocity = lerpexp(targetVelocity, dot(focus.orientation.matrix(), targetMovement*10), deltaTime/10)
+            targetAngular = lerpexp(targetAngular, targetRotation*2, deltaTime/15)
+            
+        end select
+
+        focus.velocity = lerpexp(focus.velocity, targetVelocity, deltaTime)
+        focus.position += focus.velocity * deltaTranslate
+        angular = lerpexp(angular, targetAngular, deltaTime)
+        focus.orientation *= angular * deltaRotate
+        focus.orientation *= Vector3(0, 0, .1) * deltaRotate
+        *focusObject = focus
+
+        if navMode <> NavigationMode.Fly and navMode <> NavigationMode.OrbitTarget then
+            targetCamera = (_
+                  focus _
+                - focus.vForward _
+                * iif(lookBackwards, -cameraFollowDistance.z - 3, cameraFollowDistance.z) _
+                + focus.vUp * cameraFollowDistance.y _
+            )
+            camera = lerpexp(camera, targetCamera, deltaTime * 3)
         end if
-
-        if multikey(SC_D     ) then targetMovement.x =  1
-        if multikey(SC_A     ) then targetMovement.x = -1
-        if multikey(SC_SPACE ) then targetMovement.y =  1
-        if multikey(SC_LSHIFT) then targetMovement.y = -1
-        if multikey(SC_W     ) then targetMovement.z =  1
-        if multikey(SC_S     ) then targetMovement.z = -1
-
-        if multikey(SC_UP   ) then targetRotation.x =  1
-        if multikey(SC_DOWN ) then targetRotation.x = -1
-        if multikey(SC_RIGHT) then targetRotation.y =  1
-        if multikey(SC_LEFT ) then targetRotation.y = -1
-        if multikey(SC_E    ) then targetRotation.z =  1
-        if multikey(SC_Q    ) then targetRotation.z = -1
-
-        if targetMovement.length > 0 then
-            targetMovement = normalize(dot(camera.orientation.matrix(), targetMovement))
-        end if
-        'if targetRotation.length > 1 then
-        '    targetRotation = targetRotation.unit
-        'end if
-        movement = lerpexp(movement, targetMovement, deltaTime)
-        rotation = lerpexp(rotation, targetRotation, deltaTime)
-        camera += movement * deltaTranslate
-                
-        camera.orientation *= rotation * deltaRotate
-        if lookAt then
-            camera = camera.lookAt(*lookAt)
-        end if
-    case NavigationMode.OrbitTarget
-        camera = camera.lookAt(focus, focus.Orientation.vUp)
-        camera.position += cross(world.vUp, normalize(focus.position - camera.position)) * deltaTime * 3
-    case else
-        if multikey(SC_D     ) then targetMovement.x =  1
-        if multikey(SC_A     ) then targetMovement.x = -1
-        if multikey(SC_SPACE ) then targetMovement.y =  1
-        if multikey(SC_LSHIFT) then targetMovement.y = -1
-        if multikey(SC_W     ) then targetMovement.z =  1
-        if multikey(SC_S     ) then targetMovement.z = -1
-        
-        if multikey(SC_UP   ) then targetRotation.x =  1
-        if multikey(SC_DOWN ) then targetRotation.x = -1
-        if multikey(SC_RIGHT) then targetRotation.y =  1
-        if multikey(SC_LEFT ) then targetRotation.y = -1
-        if multikey(SC_E    ) then targetRotation.z =  1
-        if multikey(SC_Q    ) then targetRotation.z = -1
-
-        targetVelocity = lerpexp(targetVelocity, dot(focus.orientation.matrix(), targetMovement*10), deltaTime/10)
-        targetAngular = lerpexp(targetAngular, targetRotation*2, deltaTime/15)
-        
-    end select
-
-    focus.velocity = lerpexp(focus.velocity, targetVelocity, deltaTime)
-    focus.position += focus.velocity * deltaTranslate
-    angular = lerpexp(angular, targetAngular, deltaTime)
-    focus.orientation *= angular * deltaRotate
-    'focus.orientation *= Vector3(0, .1, 0) * deltaRotate
-    *focusObject = focus
-
-    if navMode <> NavigationMode.Fly and navMode <> NavigationMode.OrbitTarget then
-        targetCamera = (_
-              focus _
-            - focus.vForward _
-            * iif(lookBackwards, -cameraFollowDistance.z - 3, cameraFollowDistance.z) _
-            + focus.vUp * cameraFollowDistance.y _
-        )
-        camera = lerpexp(camera, targetCamera, deltaTime * 3)
-    end if
-wend
-mouse.Show()
-end
+    wend
+    mouse.Show()
+end sub

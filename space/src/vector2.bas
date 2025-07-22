@@ -2,19 +2,8 @@
 ' Copyright (c) 2025 Joe King
 ' See main file or LICENSE for license and build info.
 ' -----------------------------------------------------------------------------
-type Vector2
-    x as double
-    y as double
-    declare constructor()
-    declare constructor(x as double, y as double)
-    declare constructor(radians as double)
-    declare function length() as double
-    declare function lerped(goal as Vector2, a as double=0.5) as Vector2
-    declare function normalized() as Vector2
-    declare function rotated(radians as double) as Vector2
-    declare function rotatedLeft() as Vector2
-    declare function rotatedRight() as Vector2
-end type
+#include once "vector2.bi"
+
 constructor Vector2
 end constructor
 constructor Vector2(x as double, y as double)
