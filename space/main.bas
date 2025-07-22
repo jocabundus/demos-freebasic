@@ -15,11 +15,14 @@
 ' -----------------------------------------------------------------------------
 
 #include once "fbgfx.bi"
-#include once "inc/vector3.bi"
-#include once "inc/vector2.bi"
-#include once "inc/orientation3.bi"
+#include once "inc/object3.bi"
 #include once "inc/cframe3.bi"
+#include once "inc/mesh3.bi"
+#include once "inc/vector2.bi"
+#include once "inc/vector3.bi"
 #include once "inc/mouse2.bi"
+#include once "inc/helpers.bi"
+#include once "inc/defines.bi"
 using FB
 
 #ifdef __FB_64BIT__
@@ -30,38 +33,13 @@ using FB
     #define _ulong_ ulong
 #endif
 
-#define pi 3.1415926535
-#define rad(degrees) degrees * PI/180
-#define deg(radians) radians * 180/PI
-#define rgb_r(c) (c shr 16 and &hff)
-#define rgb_g(c) (c shr  8 and &hff)
-#define rgb_b(c) (c        and &hff)
-#define format_decimal(f, p) iif(f >= 0, " ", "-") + str(abs(fix(f))) + "." + str(int(abs(frac(f)) * 10^p))
-#define clamp(value, min, max) iif(value < min, min, iif(value > max, max, value))
-#define unpack(v) v.x, v.y, v.z
-#define lerpexp(from, goal, a) lerp(from, goal, 1 - exp(-4.0 * a))
-
-#macro array_append(arr, value)
-    redim preserve arr(ubound(arr) + 1)
-    arr(ubound(arr)) = value
-#endmacro
-
-#macro keydown(scanCode, waitVar, codeBlock)
-    if multikey(scanCode) and waitVar = -1 then
-        waitVar = scanCode
-        codeBlock
-    elseif not multikey(scanCode) and waitVar = scanCode then
-        waitVar = -1
-    end if
-#endmacro
-
 const SEED = 1337
 const NUM_PARTICLES = 1000
 const FIELD_SIZE = 500
 
-'=======================================================================
-'= SCREEN STUFF
-'=======================================================================
+'------------------------------------------------------------------------------
+' SCREEN STUFF
+'------------------------------------------------------------------------------
 dim shared as _long_ SCREEN_W
 dim shared as _long_ SCREEN_H
 dim shared as _long_ SCREEN_DEPTH = 32
@@ -93,7 +71,7 @@ enum RenderMode
     Textured
     Wireframe
 end enum
-dim shared as integer RENDER_MODE = RenderMode.Wireframe
+dim shared as integer RENDER_MODE = RenderMode.Textured
 dim shared as integer QUALITY = 2, MIN_QUALITY = 0, MAX_QUALITY = 5 '- 0 is best
 
 enum AutoQuality
@@ -101,419 +79,8 @@ enum AutoQuality
     DistanceBased
     FpsBased
 end enum
-dim shared as integer AUTO_QUALITY = AutoQuality.None
-'===============================================================================
-'= FACE3
-'===============================================================================
-type Face3
-    id as integer
-    colr as integer = rgb(128+92*rnd, 128+92*rnd, 128+92*rnd)
-    position as Vector3
-    normal as Vector3
-    uvIds(any) as integer
-    vertexIds(any) as integer
-    declare function addUvId(uvId as integer) as Face3
-    declare function addVertexId(vertexId as integer) as Face3
-    declare static function calcNormal(vertexes() as Vector3) as Vector3
-end type
-function Face3.addUvId(uvId as integer) as Face3
-    array_append(uvIds, uvId)
-    return this
-end function
-function Face3.addVertexId(vertexId as integer) as Face3
-    array_append(vertexIds, vertexId)
-    return this
-end function
-static function Face3.calcNormal(vertexes() as Vector3) as Vector3
-    dim as Vector3 a, b, c, normal
-    dim as integer vertexCount = ubound(vertexes) + 1
-    if vertexCount = 3 then
-        a = vertexes(1)
-        b = vertexes(2)
-        c = vertexes(0)
-        normal = cross(a-c, b-c)
-    elseif vertexCount > 3 then
-        dim as integer ub = ubound(vertexes)
-        for i as integer = 1 to ub - 1
-            a = vertexes(0)
-            b = vertexes(i)
-            c = vertexes(i+1)
-            normal += cross(b-a, c-a)
-        next i
-    end if
-    return normalize(normal)
-end function
-'===============================================================================
-'= MESH3
-'===============================================================================
-type BspNode3
-    as integer faceId = -1
-    as BspNode3 ptr behind, infront
-end type
-type Mesh3
-    bspRoot as BspNode3 ptr
-    doubleSided as boolean = false
-    faces(any) as Face3
-    normals(any) as Vector3
-    vertexes(any) as Vector3
-    uvs(any) as Vector2
-    sid as string
-    declare function addFace(face as Face3) as Mesh3
-    declare function addNormal(normal as Vector3) as Mesh3
-    declare function addUV(uv as Vector2) as Mesh3
-    declare function addVertex(vertex as Vector3) as Mesh3
-    declare function buildBsp() as Mesh3
-    declare function centerGeometry() as Mesh3
-    declare function generateBsp() as Mesh3
-    declare function getFace(faceId as integer) as Face3
-    declare function getNormal(normalId as integer) as Vector3
-    declare function getUV(uvId as integer) as Vector2
-    declare function getVertex(vertexId as integer) as Vector3
-    declare function paintFaces(colr as integer) as Mesh3
-    declare function splitBsp(faceIds() as integer) as BspNode3 ptr
-end type
-function Mesh3.addFace(face as Face3) as Mesh3
-    dim as Vector3 vertexSum
-    dim as integer vertexId
-    if ubound(face.vertexIds) >= 0 then
-        for i as integer = 0 to ubound(face.vertexIds)
-            vertexId   = face.vertexIds(i)
-            vertexSum += getVertex(vertexId)
-        next i
-        face.position = vertexSum / (ubound(face.vertexIds) + 1)
-    end if
-    face.id = ubound(faces) + 1
-    array_append(faces, face)
-    return this
-end function
-'~ function Mesh3.getAverageTextureFaceColor() as integer
-    '~ dim as Mesh3 mesh = spaceship->mesh
-    '~ dim as Face3 face
-    '~ dim as Vector2 uv(2)
-    '~ dim as integer colr, r, g, b, n
-    '~ dim as double rsum, gsum, bsum
-    '~ for i as integer = 0 to ubound(mesh.faces)
-        '~ face = mesh.faces(i)
-        '~ uv(0) = mesh.getUv(face.uvIds(0))
-        '~ for j as integer = 1 to ubound(face.uvIds)-1
-            '~ uv(1) = mesh.getUv(face.uvIds(j))
-            '~ uv(2) = mesh.getUv(face.uvIds(j+1))
-            '~ for k as integer = 0 to ubound(uv)
-                '~ colr = uvToColor(uv(k).x, uv(k).y)
-                '~ rsum += rgb_r(colr)/255
-                '~ gsum += rgb_g(colr)/255
-                '~ bsum += rgb_b(colr)/255
-                '~ n += 1
-            '~ next k
-        '~ next j
-        '~ r = int(255*(rsum/n))
-        '~ g = int(255*(gsum/n))
-        '~ b = int(255*(bsum/n))
-        '~ spaceship->mesh.faces(i).colr = rgb(r, g, b)
-    '~ next i
-'~ end function
-function Mesh3.addNormal(normal as Vector3) as Mesh3
-    array_append(normals, normal)
-    return this
-end function
-function Mesh3.addUV(uv as Vector2) as Mesh3
-    array_append(uvs, uv)
-    return this
-end function
-function Mesh3.addVertex(vertex as Vector3) as Mesh3
-    array_append(vertexes, vertex)
-    return this
-end function
-function Mesh3.centerGeometry() as Mesh3
-    dim as Vector3 average
-    for i as integer = 0 to ubound(vertexes)
-        average += vertexes(i)
-    next i
-    average /= (ubound(vertexes) + 1)
-    for i as integer = 0 to ubound(vertexes)
-        vertexes(i) -= average
-    next i
-    return this
-end function
-function Mesh3.buildBsp() as Mesh3
-    dim as integer faceIds(any)
-    if ubound(vertexes) >= 0 then
-        for i as integer = 0 to ubound(faces)
-            array_append(faceIds, faces(i).id)
-        next i
-        bspRoot = splitBsp(faceIds())
-    end if
-    return this
-end function
-function Mesh3.splitBsp(faceIds() as integer) as BspNode3 ptr
-    dim as BspNode3 ptr node
-    dim as Face3 face, behind, infront, nearest, splitter
-    dim as integer backId =- -1, frontId = -1, backs(any), fronts(any)
-    dim as Vector3 average, backSum, frontSum, rootSum
+dim shared as integer AUTO_QUALITY = AutoQuality.DistanceBased
 
-    if ubound(faceIds) = -1 then return 0
-
-    node = new BspNode3
-    select case 1
-    case 0 '- average vertex point
-        for i as integer = 0 to ubound(faceIds)
-            face = getFace(faceIds(i))
-            rootSum += face.position
-        next i
-        average = rootSum / (ubound(faceIds) + 1)
-        
-        nearest = getFace(faceIds(0))
-        for i as integer = 1 to ubound(faceIds)
-            face = getFace(faceIds(i))
-            if (face.position - average).length < (nearest.position - average).length then
-                nearest = face
-            end if
-        next i
-    case 1 '- max area
-        dim as double compare, comparator
-        dim as Vector3 a, b, c
-        nearest = getFace(faceIds(0))
-        for i as integer = 0 to ubound(faceIds)
-            face = getFace(faceIds(i))
-            a = getVertex(face.vertexIds(0))
-            b = getVertex(face.vertexIds(1))
-            c = getVertex(face.vertexIds(2))
-            compare = cross(b - a, c - a).length
-            if compare > comparator then
-                comparator = compare
-                nearest = face
-            end if
-        next i
-    case 2 '- min area between average and normal
-        for i as integer = 0 to ubound(faceIds)
-            face = getFace(faceIds(i))
-            rootSum += face.position
-        next i
-        average = rootSum / (ubound(faceIds) + 1)
-        
-        dim as double compare, comparator
-        dim as Vector3 a, b, c
-        nearest = getFace(faceIds(0))
-        for i as integer = 0 to ubound(faceIds)
-            face = getFace(faceIds(i))
-            compare = cross(face.normal, average - face.position).length
-            if compare < comparator then
-                comparator = compare
-                nearest = face
-            end if
-        next i
-    end select
-    
-    node->faceId = nearest.id
-    splitter = getFace(nearest.id)
-    for i as integer = 0 to ubound(faceIds)
-        face = getFace(faceIds(i))
-        if face.id <> splitter.id then
-            if dot(splitter.normal, face.position - splitter.position) <= 0 then
-                array_append(backs, face.id)
-                backSum += face.position
-            else
-                array_append(fronts, face.id)
-                frontSum += face.position
-            end if
-        end if
-    next i
-
-    if ubound(backs) >= 0 then
-        average = backSum / (ubound(backs) + 1)
-        backId  = backs(0)
-        behind  = getFace(backId)
-        for i as integer = 1 to ubound(backs)
-            face = getFace(backs(i))
-            if (face.position - average).length < (behind.position - average).length then
-                backId = face.id
-            end if
-        next i
-    end if
-    if ubound(fronts) >= 0 then
-        average = frontSum / (ubound(fronts) + 1)
-        frontId = fronts(0)
-        infront = getFace(frontId)
-        for i as integer = 1 to ubound(fronts)
-            face = getFace(fronts(i))
-            if (face.position - average).length < (infront.position - average).length then
-                frontId = face.id
-            end if
-        next i
-    end if
-
-    if backId >= 0 then
-        node->behind  = splitBsp(backs())
-    end if
-    if frontId >= 0 then
-        node->infront = splitBsp(fronts())
-    end if
-    
-    return node
-end function
-function Mesh3.getFace(faceId as integer) as Face3
-if faceId > ubound(this.faces) then
-    print faceId
-    sleep
-    end
-end if
-    return this.faces(faceId)
-end function
-function Mesh3.getNormal(normalId as integer) as Vector3
-    return this.normals(normalId)
-end function
-function Mesh3.getUV(uvId as integer) as Vector2
-    return this.uvs(uvId)
-end function
-function Mesh3.getVertex(vertexId as integer) as Vector3
-    return this.vertexes(vertexId)
-end function
-function Mesh3.paintFaces(colr as integer) as Mesh3
-    for i as integer = 0 to ubound(faces)
-        faces(i).colr = colr
-    next i
-    return Mesh3
-end function
-'===============================================================================
-'= OBJECT3
-'===============================================================================
-type Object3 extends CFrame3
-    id as integer
-    velocity as Vector3
-    mesh as Mesh3
-    declare function loadFile(filename as string) as integer
-    declare function transform() as Object3
-end type
-sub string_split(subject as string, delim as string, pieces() as string)
-    dim as integer i, j, index = -1
-    dim as string s
-    i = 1
-    while i > 0
-        s = ""
-        j = instr(i, subject, delim)
-        if j then
-            s = mid(subject, i, j-i)
-            i = j+1
-        else
-            s = mid(subject, i)
-            i = 0
-        end if
-        index += 1: redim preserve pieces(index)
-        pieces(index) = s
-    wend
-end sub
-function Object3.loadFile(filename as string) as integer
-    dim as string datum, pieces(any), subpieces(any), s, p
-    dim as boolean calcNormals = true
-    dim as integer f = freefile
-    open filename for input as #f
-        while not eof(f)
-            line input #f, s
-            string_split(s, " ", pieces())
-            for i as integer = 0 to ubound(pieces)
-                dim as string datum = pieces(i)
-                select case datum
-                    case "o"
-                        mesh.sid = pieces(i + 1)
-                        continue while
-                    case "v"
-                        mesh.addVertex(Vector3(_
-                            val(pieces(1)),_
-                            val(pieces(2)),_
-                            val(pieces(3)) _
-                        ))
-                    case "vn"
-                        calcNormals = false
-                        mesh.addNormal(Vector3(_
-                            val(pieces(1)),_
-                            val(pieces(2)),_
-                            val(pieces(3)) _
-                        ))
-                    case "vt"
-                        mesh.addUV(Vector2(_
-                            val(pieces(1)),_
-                            val(pieces(2)) _
-                        ))
-                    case "f"
-                        dim as integer normalId, uvId, vertexId
-                        dim as Face3 face
-                        for j as integer = 0 to ubound(pieces) - 1
-                            normalId = -1
-                            uvId     = -1
-                            vertexId = -1
-                            dim as string p = pieces(1 + j)
-                            if instr(p, "/") then
-                                string_split(p, "/", subpieces())
-                                for k as integer = 0 to ubound(subpieces)
-                                    if subpieces(k) <> "" then
-                                        select case k
-                                            case 0: vertexId = val(subpieces(k)) - 1
-                                            case 1: uvId     = val(subpieces(k)) - 1
-                                            case 2: normalId = val(subpieces(k)) - 1
-                                        end select
-                                    end if
-                                next k
-                            else
-                                vertexId = val(pieces(1 + j)) - 1
-                            end if
-                            if vertexId > -1 then
-                                face.addVertexId(vertexId)
-                            end if
-                            if uvId > -1 then
-                                face.addUvId(uvId)
-                            end if
-                            if normalId > -1 then
-                                face.normal = mesh.getNormal(normalId)
-                            end if
-                            print
-                        next j
-                        if calcNormals then
-                            dim as Vector3 vertexes(any)
-                            for j as integer = 0 to ubound(face.vertexIds)
-                                vertexId = face.vertexIds(j)
-                                array_append(vertexes, mesh.getVertex(vertexId))
-                            next j
-                            face.normal = Face3.calcNormal(vertexes())
-                        end if
-                        mesh.addFace(face)
-                    case else
-                        continue while
-                end select
-            next i
-        wend
-    close #1
-    mesh.buildBsp()
-    return 0
-end function
-function Object3.transform() as Object3
-    for i as integer = 0 to ubound(mesh.vertexes)
-        dim as Vector3 v = mesh.vertexes(i)
-        mesh.vertexes(i) = Vector3(_
-            dot(vRight   , v),_
-            dot(vUp      , v),_
-            dot(vForward , v)_
-        ) + this.position
-    next i
-    for i as integer = 0 to ubound(mesh.faces)
-        dim as Vector3 n = mesh.faces(i).normal
-        mesh.faces(i).normal = Vector3(_
-            dot(vRight   , n),_
-            dot(vUp      , n),_
-            dot(vForward , n)_
-        )
-    next i
-    return this
-end function
-function object_collection_add(filename as String, collection() as Object3) as Object3 ptr
-    dim as Object3 o
-    if o.loadFile(filename) = 0 then
-        'o.centerGeometry()
-        dim as integer n = ubound(collection)
-        redim preserve collection(n+1)
-        collection(n+1) = o
-        return @collection(n+1)
-    end if
-end function
 
 '=======================================================================
 '= VIEW TRANSFORM
@@ -572,66 +139,7 @@ function ParticleType.getTwinkleColor() as integer
     return rgb(r, g, b)
 end function
 
-type PointLight
-    position as Vector2
-    color3 as integer
-    intensity as double
-    declare constructor ()
-    declare constructor (position as Vector2, color3 as integer, intensity as double)
-end type
-constructor PointLight
-end constructor
-constructor PointLight(position as Vector2, color3 as integer, intensity as double)
-    this.position = position
-    this.color3 = color3
-    this.intensity = intensity
-end constructor
 
-function pickStarColor(a as double, m as double=1, variant as integer = 1) as integer
-    dim as Vector2 va
-    va = Vector2(a) * m
-    dim as double r, g, b
-    select case variant
-        case 1
-            dim as PointLight lights(3) = _
-            {_
-                type(Vector2(0/3*PI)/2, &hff0000, 1),_
-                type(Vector2(2/3*PI)/2, &h00ff00, 1),_
-                type(Vector2(4/3*PI)/2, &h0000ff, 1),_
-                type(Vector2(0, 0)  , &hffffff, 1) _
-            }
-            for i as integer = 0 to ubound(lights)
-                dim as Vector2 p = lights(i).position
-                dim as integer c = lights(i).color3
-                dim as double  m = lights(i).intensity
-                dim as double  d = clamp(1-sin((p - va).length), 0, 1)
-                r += int(d * m * (c shr 16 and &hff))
-                g += int(d * m * (c shr  8 and &hff))
-                b += int(d * m * (c        and &hff))
-            next i
-            return rgb(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255))
-        case 2
-            dim as PointLight lights(4) = _
-            {_
-                type(Vector2(0/4*PI)*0, &hffffff, 1),_
-                type(Vector2(0/4*PI)*1, &h0000ff, 1/2),_
-                type(Vector2(2/4*PI)*1, &h0000ff, 1/2),_
-                type(Vector2(4/4*PI)*1, &h0000ff, 1/2),_
-                type(Vector2(6/4*PI)*1, &h0000ff, 1/2) _
-            }
-            for i as integer = 0 to ubound(lights)
-                dim as Vector2 p = lights(i).position
-                dim as integer c = lights(i).color3
-                dim as double  m = lights(i).intensity
-                dim as double  d = clamp(1-sin((p - va).length), 0, 1)
-                r += int(d * m * (c shr 16 and &hff))
-                g += int(d * m * (c shr  8 and &hff))
-                b += int(d * m * (c        and &hff))
-            next i
-            return rgb(clamp(r,0,255), clamp(g,0,255), clamp(b,0,255))
-    end select
-    return rgb(int(256*r), int(256*g), int(256*b))
-end function
 
 dim as ParticleType particles(NUM_PARTICLES-1)
 for i as integer = 0 to ubound(particles)
@@ -1074,57 +582,6 @@ sub printStringBlock(row as integer, col as integer, text as string, header as s
     end if
 end sub
 
-function getAxisNames() as string
-    dim as string axisNames(2) = {"X", "Y", "Z"}
-    dim as integer roww = 21
-    dim as integer colw = 8
-    dim as string body   = ""
-    dim as string colhdr = "_____"
-    dim as string row
-    row = space(roww): for i as integer = 0 to 2: mid(row, 1+i*colw) = colhdr: next i: body += row + "$$"
-    row = space(roww): for i as integer = 0 to 2: mid(row, 1+i*colw) = axisNames(i): next i: body += row + "$"
-    row = space(roww): for i as integer = 0 to 2: mid(row, 1+i*colw) = colhdr: next i: body += row + "$$"
-    return body + "$"
-end function
-
-function getOrientationStats(camera as CFrame3) as string
-    dim as string stats(3, 3)
-    for i as integer = 0 to 2
-        dim as Vector3 o = camera.orientation.matrix(i)
-        stats(i, 0) = format_decimal(o.x, 2)
-        stats(i, 1) = format_decimal(o.y, 2)
-        stats(i, 2) = format_decimal(o.z, 2)
-    next i
-    dim as integer roww = 21
-    dim as integer colw = 8
-    dim as string body   = ""
-    dim as string row
-    for i as integer = 0 to 2
-        dim as string row = space(roww)
-        for j as integer = 0 to 2
-            mid(row, 1+j*colw) = stats(i, j)
-        next j
-        body += row + iif(i < 2, "$$", "")
-    next i
-    return body
-end function
-
-function getLocationStats(camera as CFrame3) as string
-    dim as string axisNames(2) = {"X", "Y", "Z"}
-    dim as integer roww = 21
-    dim as integer colw = 8
-    dim as string body   = ""
-    dim as string row
-    dim as string colhdr = "_____"
-    'row = space(roww): for i as integer = 0 to 2: mid(row, 1+i*colw) = axisNames(i): next i: body += row + "$"
-    'row = space(roww): for i as integer = 0 to 2: mid(row, 1+i*colw) = colhdr: next i: body += row + "$$"
-    row = space(roww)
-    mid(row, 1+0*colw) = format_decimal(camera.position.x, 1)
-    mid(row, 1+1*colw) = format_decimal(camera.position.y, 1)
-    mid(row, 1+2*colw) = format_decimal(camera.position.z, 1)
-    return body + row
-end function
-
 sub renderUI(mouse as Mouse2, reticleColor as integer = &h808080, arrowColor as integer = &hd0b000)
     dim as Vector2 m = type(mouse.x, mouse.y)
     '- draw center circle
@@ -1330,7 +787,7 @@ while true
         select case RENDER_MODE
             case RenderMode.Solid
                 RENDER_MODE = RenderMode.Textured
-                'AUTO_QUALITY = AutoQuality.DistanceBased
+                AUTO_QUALITY = AutoQuality.DistanceBased
             case RenderMode.Textured
                 RENDER_MODE = RenderMode.Wireframe
             case RenderMode.Wireframe
@@ -1447,7 +904,7 @@ while true
     focus.position += focus.velocity * deltaTranslate
     angular = lerpexp(angular, targetAngular, deltaTime)
     focus.orientation *= angular * deltaRotate
-    focus.orientation *= Vector3(0, .1, 0) * deltaRotate
+    'focus.orientation *= Vector3(0, .1, 0) * deltaRotate
     *focusObject = focus
 
     if navMode <> NavigationMode.Fly then
