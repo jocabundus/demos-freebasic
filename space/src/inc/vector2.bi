@@ -26,7 +26,6 @@ declare operator + (a as Vector2, b as Vector2) as Vector2
 declare operator - (a as Vector2, b as Vector2) as Vector2
 declare operator * (a as Vector2, b as Vector2) as Vector2
 declare operator * (a as Vector2, b as double) as Vector2
-declare operator * (a as double, b as Vector2) as Vector2
 declare operator / (a as Vector2, b as Vector2) as Vector2
 declare operator / (a as Vector2, b as double) as Vector2
 declare operator \ (a as Vector2, b as Vector2) as Vector2

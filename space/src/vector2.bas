@@ -41,9 +41,6 @@ end operator
 operator * (a as Vector2, b as double) as Vector2
     return type(a.x*b, a.y*b)
 end operator
-operator * (a as double, b as Vector2) as Vector2
-    return b * a
-end operator
 operator / (a as Vector2, b as Vector2) as Vector2
     return type(a.x/b.x, a.y/b.y)
 end operator

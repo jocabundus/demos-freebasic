@@ -30,18 +30,17 @@ declare operator + (a as Vector3, b as Vector3) as Vector3
 declare operator - (a as Vector3, b as Vector3) as Vector3
 declare operator * (a as Vector3, b as Vector3) as Vector3
 declare operator * (a as Vector3, b as double) as Vector3
-declare operator * (a as double, b as Vector3) as Vector3
 declare operator / (a as Vector3, b as Vector3) as Vector3
 declare operator / (a as Vector3, b as double) as Vector3
 declare operator \ (a as Vector3, b as Vector3) as Vector3
 declare operator \ (a as Vector3, b as double) as Vector3
 declare operator ^ (a as Vector3, e as double) as Vector3
 
-declare function cross overload(a as Vector3, b as Vector3) as Vector3
-declare function dot overload(a as Vector3, b as Vector3) as double
-declare function dot overload(a() as Vector3, b as Vector3) as Vector3
-declare function dot overload(a() as Vector3, b() as Vector3) as Vector3
-declare function lerp overload(from as Vector3, goal as Vector3, a as double = 0.5) as Vector3
+declare function cross     overload(a as Vector3, b as Vector3) as Vector3
+declare function dot       overload(a as Vector3, b as Vector3) as double
+declare function dot       overload(a() as Vector3, b as Vector3) as Vector3
+declare function dot       overload(a() as Vector3, b() as Vector3) as Vector3
+declare function lerp      overload(from as Vector3, goal as Vector3, a as double = 0.5) as Vector3
 declare function magnitude overload(a as Vector3) as double
 declare function normalize overload(a as Vector3) as Vector3
-declare function rotate overload(a as Vector3, radians as double, axis as integer = 2) as Vector3
+declare function rotate    overload(a as Vector3, radians as double, axis as integer = 2) as Vector3

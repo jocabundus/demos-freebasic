@@ -4,6 +4,11 @@
 ' -----------------------------------------------------------------------------
 #include once "mesh3.bi"
 
+#macro array_append(arr, value...)
+    redim preserve arr(ubound(arr) + 1)
+    arr(ubound(arr)) = value
+#endmacro
+
 function Face3.addUvId(uvId as integer) as Face3
     array_append(uvIds, uvId)
     return this

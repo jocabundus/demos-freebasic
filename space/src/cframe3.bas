@@ -19,6 +19,10 @@ constructor CFrame3(position as Vector3, orientation as Orientation3)
     this.position    = position
     this.orientation = orientation
 end constructor
+constructor CFrame3(position as Vector3, axisRotations as Vector3)
+    this.position     = position
+    this.orientation *= axisRotations
+end constructor
 '==============================================================================
 '= OPERATOR
 '==============================================================================
@@ -59,14 +63,12 @@ function lerp overload(from as CFrame3, goal as CFrame3, a as double = 0.5) as C
     )
 end function
 '==============================================================================
-'= METHODS
+'= METHOD
 '==============================================================================
 function CFrame3.lerped(goal as CFrame3, a as double=0.5) as CFrame3
     return lerp(this, goal, a)
 end function
-function CFrame3.lookAt(target as CFrame3, worldUp as Vector3 = type(0, 1, 0)) as CFrame3
-    return CFrame3(position, Orientation3.Look(target.position - position, worldUp))
-end function
 function CFrame3.lookAt(target as Vector3, worldUp as Vector3 = type(0, 1, 0)) as CFrame3
-    return CFrame3(position, Orientation3.Look(target - position, worldUp))
+    this.orientation = Orientation3.Look(target - position, worldUp)
+    return this
 end function

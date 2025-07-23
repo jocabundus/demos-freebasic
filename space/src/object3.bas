@@ -4,8 +4,50 @@
 ' -----------------------------------------------------------------------------
 #include once "object3.bi"
 
-declare sub string_split(subject as string, delim as string, pieces() as string)
+#macro array_append(arr, value...)
+    redim preserve arr(ubound(arr) + 1)
+    arr(ubound(arr)) = value
+#endmacro
 
+declare sub string_split(subject as string, delim as string, pieces() as string)
+'==============================================================================
+'= CONSTRUCTOR
+'==============================================================================
+constructor Object3
+end constructor
+constructor Object3(sid as string, filename as string = "")
+    this.sid = sid
+    if filename <> "" then
+        this.loadFile(filename)
+    end if
+end constructor
+'==============================================================================
+'= PROPERTY
+'==============================================================================
+property Object3.position as Vector3
+    return this.cframe.position
+end property
+property Object3.position(newPosition as Vector3)
+    this.cframe.position = newPosition
+end property
+property Object3.orientation as Orientation3
+    return this.cframe.orientation
+end property
+property Object3.orientation(newOrientation as Orientation3)
+    this.cframe.orientation = newOrientation
+end property
+property Object3.vForward as Vector3
+    return this.cframe.orientation.vForward
+end property
+property Object3.vRight as Vector3
+    return this.cframe.orientation.vRight
+end property
+property Object3.vUp as Vector3
+    return this.cframe.orientation.vUp
+end property
+'==============================================================================
+'= METHOD
+'==============================================================================
 function Object3.loadFile(filename as string) as integer
     dim as string datum, pieces(any), subpieces(any), s, p
     dim as boolean calcNormals = true
@@ -108,7 +150,9 @@ function Object3.toWorld() as Object3
     next i
     return this
 end function
-
+'==============================================================================
+'= FUNCTION
+'==============================================================================
 private sub string_split(subject as string, delim as string, pieces() as string)
     dim as integer i, j, index = -1
     dim as string s

@@ -5,6 +5,8 @@
 #include once "helpers.bi"
 #include once "vector3.bi"
 
+#define format_decimal(f, p) iif(f >= 0, " ", "-") + str(abs(fix(f))) + "." + str(int(abs(frac(f)) * 10^p))
+
 function getOrientationStats(camera as CFrame3) as string
     dim as string stats(3, 3)
     for i as integer = 0 to 2
@@ -39,16 +41,6 @@ function getLocationStats(camera as CFrame3) as string
     mid(row, 1+2*colw) = format_decimal(camera.position.z, 1)
     
     return body + row
-end function
-
-function object_collection_add(filename as String, collection() as Object3) as Object3 ptr
-    dim as Object3 o
-    if o.loadFile(filename) = 0 then
-        dim as integer n = ubound(collection)
-        redim preserve collection(n+1)
-        collection(n+1) = o
-        return @collection(n+1)
-    end if
 end function
 
 sub printSafe(row as integer, col as integer, text as string, bounds() as integer)
@@ -111,3 +103,11 @@ sub printStringBlock(row as integer, col as integer, text as string, header as s
         locate row, col: print string(maxw, footer);
     end if
 end sub
+
+function getObjectBySid(sid as string, objects() as Object3) byref as Object3
+    for i as integer = 0 to ubound(objects)
+        if objects(i).sid = sid then
+            return objects(i)
+        end if
+    next i
+end function

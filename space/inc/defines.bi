@@ -10,7 +10,6 @@
 #define rgb_b(c) (c        and &hff)
 #define format_decimal(f, p) iif(f >= 0, " ", "-") + str(abs(fix(f))) + "." + str(int(abs(frac(f)) * 10^p))
 #define clamp(value, min, max) iif(value < min, min, iif(value > max, max, value))
-#define unpack(v) v.x, v.y, v.z
 #define lerpexp(from, goal, a) lerp(from, goal, 1 - exp(-4.0 * a))
 
 #macro array_append(arr, value)

@@ -12,14 +12,11 @@ type CFrame3
     declare constructor (position as Vector3)
     declare constructor (position as Vector3, orientation as Orientation3)
     declare constructor (orientation as Orientation3)
+    declare constructor (position as Vector3, axisRotations as Vector3)
     declare property vForward as Vector3
-    declare property vForward(newForward as Vector3)
     declare property vRight as Vector3
-    declare property vRight(newRight as Vector3)
     declare property vUp as Vector3
-    declare property vUp(newUp as Vector3)
     declare function lerped(goal as CFrame3, a as double=0.5) as CFrame3
-    declare function lookAt(target as CFrame3, worldUp as Vector3 = type(0, 1, 0)) as CFrame3
     declare function lookAt(target as Vector3, worldUp as Vector3 = type(0, 1, 0)) as CFrame3
 end type
 

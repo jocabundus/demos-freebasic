@@ -2,7 +2,6 @@
 ' Copyright (c) 2025 Joe King
 ' See main file or LICENSE for license and build info.
 ' -----------------------------------------------------------------------------
-#include once "defines.bi"
 #include once "vector2.bi"
 #include once "vector3.bi"
 
