@@ -61,8 +61,6 @@ dim shared as ScreenMetaType ScreenMeta
 dim shared as integer RENDER_MODE = RenderMode.Textured
 dim shared as integer QUALITY = 2, MIN_QUALITY = 0, MAX_QUALITY = 5 '- 0 is best
 dim shared as integer AUTO_QUALITY = AutoQuality.DistanceBased
-dim shared as integer texSize = 64
-dim shared as uinteger texture(texSize-1, texSize-1)
 
 dim as Mouse2 mouse
 dim as Object3 objects(any)
@@ -85,7 +83,8 @@ sub init(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
     mouse.hide()
     mouse.setMode(Mouse2Mode.Viewport)
     array_append(objects, Object3("anchor"))
-    array_append(objects, Object3("spaceship", "data/mesh/spaceship.obj"))
+    array_append(objects, Object3("spaceship", "data/mesh/spaceship3.obj"))
+    array_append(objects, Object3("asteroid", "data/mesh/rocks.obj"))
     for i as integer = 0 to ubound(particles)
         dim as ParticleType p = type(_
             Vector3(_
@@ -97,16 +96,27 @@ sub init(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
         )
         particles(i) = p
     next i
+    dim as Image32 image = type(64, 64)
     dim as double a, b, u, v
-    for y as double = 0 to texSize-1
-        for x as double = 0 to texSize-1
-            a = x / texSize
-            b = y / texSize
+    dim as long colr, value
+    dim as long ubr, ubg, ubb
+    for y as double = 0 to 63
+        for x as double = 0 to 63
+            a = x / 64
+            b = y / 64
             u = sin(2*pi*a)
             v = cos(2*pi*a)
-            texture(x, y) = ColorSpace2.SampleColor(Vector2(u, v)*(a+b)*3.9, 4)
+            colr  = ColorSpace2.SampleColor(Vector2(u, v)*(a+b), 3)
+            value = -32 + (int(x) xor int(y))*2
+            ubr = clamp(rgb_r(colr) + value, 0, 255)
+            ubg = clamp(rgb_g(colr) + value, 0, 255)
+            ubb = clamp(rgb_b(colr) + value, 0, 255)
+            colr = rgb(ubr, ubg, ubb)
+            image.plotPixel(x, y, colr)
         next x
     next y
+    dim byref as Object3 spaceship = getObjectBySid("spaceship", objects())
+    spaceship.mesh.texture = image.buffer
 end sub
 
 sub shutdown(mouse as Mouse2)
@@ -169,10 +179,7 @@ function viewToScreen(vp as vector3, fov as double = 1) as Vector2
     return v2
 end function
 
-function uvToColor(u as double, v as double) as uinteger
-    return texture(int(texSize * u), int(texSize * v))
-end function
-sub drawTexturedTri(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uvb as Vector2, uvc as Vector2, mapFunc as function(x as double, y as double) as integer, quality as integer = 0)
+sub drawTexturedTri(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uvb as Vector2, uvc as Vector2, texture as Image32)
     dim as _long_ bpp = ScreenMeta.bpp, pitch = ScreenMeta.pitch
     dim as any ptr buffer, rowStart
     dim as ulong ptr pixel
@@ -214,7 +221,7 @@ sub drawTexturedTri(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uv
                 v = 1-dot(p-b, sbu) * sbl: if v < 0 or v > 1 then pixel += 1: continue for
                 w = 1-dot(p-c, scu) * scl: if w < 0 or w > 1 then pixel += 1: continue for
                 n = (uva*u + uvb*v + uvc*w)/3
-                *pixel = uvToColor(n.x, n.y)
+                *pixel = texture.getPixel(u, v)
                 pixel += 1
             next x
             rowStart += pitch
@@ -222,12 +229,12 @@ sub drawTexturedTri(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uv
         screenunlock
     end if
 end sub
-sub drawTexturedTriLowQ(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uvb as Vector2, uvc as Vector2, mapFunc as function(x as double, y as double) as integer, quality as integer = 0)
+sub drawTexturedTriLowQ(a as Vector2, b as Vector2, c as Vector2, uva as Vector2, uvb as Vector2, uvc as Vector2, texture as Image32, quality as integer = 0)
     dim as _long_ bpp = ScreenMeta.bpp, pitch = ScreenMeta.pitch
     dim as _long_ imgPitch, imgBpp, imgw, imgh
     dim as any ptr buffer = screenptr, row, start
-    dim as any ptr imgBuffer, imgRowStart, imgPixelDataStart
-    dim as ulong ptr imgPixel, pixel
+    dim as any ptr imgBuffer, imgRowStart, imgPixelStart
+    dim as ulong ptr pixel, imgPixel
     dim as integer q = 2^quality
     dim as Vector2 sideA, sideB, sideC
     dim as Vector2 toplft, btmrgt
@@ -262,11 +269,11 @@ sub drawTexturedTriLowQ(a as Vector2, b as Vector2, c as Vector2, uva as Vector2
     imgw = (x1-x0+q)\q
     imgh = (y1-y0+q)\q
     imgBuffer = imagecreate(imgw, imgh)
-    imageinfo imgBuffer, imgw, imgh, imgBpp, imgPitch, imgPixelDataStart
+    imageinfo imgBuffer, imgw, imgh, imgBpp, imgPitch, imgPixelStart
     start = buffer + y0*pitch + x0*bpp
     if buffer <> 0 and imgBuffer <> 0 then
         screenlock
-        imgRowStart = imgPixelDataStart
+        imgRowStart = imgPixelStart
         for y as integer = y0 to y1 step q
             imgPixel = imgRowStart
             for x as integer = x0 to x1 step q
@@ -275,13 +282,13 @@ sub drawTexturedTriLowQ(a as Vector2, b as Vector2, c as Vector2, uva as Vector2
                 v = 1-dot(p-b, sbu) * sbl: if v < 0 or v > 1 then imgPixel += 1: continue for
                 w = 1-dot(p-c, scu) * scl: if w < 0 or w > 1 then imgPixel += 1: continue for
                 n = (uva*u + uvb*v + uvc*w)/3
-                *imgPixel = uvToColor(n.x, n.y)
+                *imgPixel = texture.getPixel(u, v)
                 imgPixel += 1
             next x
             imgRowStart += imgPitch
         next
         row = start
-        imgRowStart = imgPixelDataStart
+        imgRowStart = imgPixelStart
         for i as integer = y0 to y1-q step q '- remove -q in future - band-aid for crash bug with very low quality
             for y as integer = 0 to q-1
                 pixel = row
@@ -339,17 +346,6 @@ sub renderFaceSolid(byref face as Face3, byref mesh as Mesh3, byref camera as CF
     dim as Vector3 worldNormal, worldVertex
     dim as integer colr, cr, cg, cb
     dim as double dt, value
-    cr = rgb_r(face.colr)
-    cg = rgb_g(face.colr)
-    cb = rgb_b(face.colr)
-    dt = dot(face.normal, normalize(world.upward + camera.forward))
-    dt = dot(face.normal, world.upward)
-    value = 64 * dt
-    colr = rgb(_
-        clamp(cr+value, 0, 255),_
-        clamp(cg+value, 0, 255),_
-        clamp(cb+value, 0, 255) _
-    )
     for i as integer = 0 to ubound(face.vertexIds)
         worldVertex   = mesh.getVertex(face.vertexIds(i))
         viewVertex(i) = worldToView(worldVertex, camera)
@@ -363,6 +359,16 @@ sub renderFaceSolid(byref face as Face3, byref mesh as Mesh3, byref camera as CF
             exit sub
         end if
     end if
+    cr = rgb_r(face.colr)
+    cg = rgb_g(face.colr)
+    cb = rgb_b(face.colr)
+    dt = dot(face.normal, world.upward)
+    value = 80 * dt
+    colr = rgb(_
+        clamp(cr+value, 0, 255),_
+        clamp(cg+value, 0, 255),_
+        clamp(cb+value, 0, 255) _
+    )
     for i as integer = 0 to ubound(viewVertex)
         pixels(i) = viewToScreen(viewVertex(i))
     next i
@@ -387,32 +393,56 @@ sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as
     dim as Vector2 a, b, c, pixels(ubound(face.vertexIds)), uvs(ubound(face.vertexIds))
     dim as Vector3 viewNormal, viewVertex(ubound(face.vertexIds))
     dim as Vector3 worldNormal, worldVertex
-    dim as integer value, colr, cr, cg, cb
+    dim as Image32 texture, shadedTexture
+    dim as any ptr srcRow, dstRow
+    dim as ulong ptr src, dst
+    dim as ulong colr
+    dim as long ubr, ubg, ubb
+    dim as long value
     dim as double dt
-    cr = rgb_r(face.colr)
-    cg = rgb_g(face.colr)
-    cb = rgb_b(face.colr)
-    dt = dot(face.normal, world.upward)
-    dt = dot(face.normal, normalize(camera.position - face.position))
-    value = 64 * (-0.5 + dt)
-    colr = rgb(_
-        clamp(cr+value, 0, 255),_
-        clamp(cg+value, 0, 255),_
-        clamp(cb+value, 0, 255) _
-    )
+    
     for i as integer = 0 to ubound(face.vertexIds)
         worldVertex   = mesh.getVertex(face.vertexIds(i))
         viewVertex(i) = worldToView(worldVertex, camera)
-        if viewVertex(i).z > -1 then
+        if viewVertex(i).z >= 0 then '- closer allow because draw sub clips
             exit sub
         end if
     next i
+    
     if not mesh.doubleSided then
         viewNormal = normalize(worldToView(face.normal, camera, true))
         if dot(viewVertex(0), viewNormal) > 0 then
             exit sub
         end if
     end if
+    
+    dt = dot(face.normal, world.upward)
+    value = 80 * (-0.5 + dt)
+    texture.readInfo(mesh.texture)
+    shadedTexture = type(texture.w, texture.h)
+    srcRow = texture.pixdata
+    dstRow = shadedTexture.pixdata
+    for y as integer = 0 to texture.h-1
+        src = srcRow
+        dst = dstRow
+        for x as integer = 0 to texture.w-1
+            colr = *src
+            ubr = rgb_r(colr)
+            ubg = rgb_g(colr)
+            ubb = rgb_b(colr)
+            colr = rgb(_
+                clamp(ubr+value, 0, 255),_
+                clamp(ubg+value, 0, 255),_
+                clamp(ubb+value, 0, 255) _
+            )
+            *dst = colr
+            src += 1
+            dst += 1
+        next x
+        srcRow  += texture.pitch
+        dstRow += shadedTexture.pitch
+    next y
+    
     for i as integer = 0 to ubound(viewVertex)
         pixels(i) = viewToScreen(viewVertex(i))
         uvs(i) = mesh.getUV(face.uvIds(i))
@@ -431,7 +461,7 @@ sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as
                 Vector2(b.x, b.y),_
                 Vector2(c.x, c.y),_
                 uvs(0), uvs(i), uvs(i+1),_
-                @uvToColor _
+                shadedTexture _
             )
         else
             drawTexturedTriLowQ(_
@@ -439,7 +469,7 @@ sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as
                 Vector2(b.x, b.y),_
                 Vector2(c.x, c.y),_
                 uvs(0), uvs(i), uvs(i+1),_
-                @uvToColor,_
+                shadedTexture,_
                 QUALITY _
             )
         end if
@@ -488,7 +518,7 @@ sub renderBspFaces(node as BspNode3 ptr, byref mesh as Mesh3, byref camera as CF
         select case RENDER_MODE
             case RenderMode.Solid   : renderFaceSolid face, mesh, camera, world
             case RenderMode.Textured
-                if ubound(face.uvIds) >= 0 then
+                if ubound(face.uvIds) >= 0 and mesh.texture <> 0 then
                     renderFaceTextured face, mesh, camera, world
                 else
                     renderFaceSolid face, mesh, camera, world
@@ -544,7 +574,23 @@ sub animateObjects(objects() as Object3, byref camera as CFrame3, byref world as
     for i as integer = 0 to ubound(objects)
         dim byref o as Object3 = objects(i)
         o.cframe *= CFrame3(o.linear * deltaTime, o.angular * deltaTime)
+        if o.callback then
+            o.callback(o, camera, world, deltaTime)
+        end if
     next i
+end sub
+
+sub animateAsteroid(byref o as Object3, byref camera as CFrame3, byref world as CFrame3, deltaTime as double)
+    dim as CFrame3 cf
+    dim as Vector3 origin = Vector3.Zero
+    if o.position = origin then
+        o.angular = Vector3.Randomized() * 0.5
+        o.position = Vector3.Randomized() * (20 + 30*rnd)
+    else
+        cf.position = o.position
+        cf.lookAt(origin, world.upward)
+        o.cframe.position += normalize(cf.rightward - cf.upward) * 0.1
+    end if
 end sub
 
 '==============================================================================
@@ -552,7 +598,7 @@ end sub
 '==============================================================================
 sub main(byref mouse as Mouse2, objects() as Object3, particles() as ParticleType)
 
-    dim as CFrame3 world = Vector3(0, 9, -1)
+    dim as CFrame3 world ': world *= Vector3(0, rad(180), 0)
     dim as CFrame3 camera
     dim as double  deltaTime, frameStartTime
     dim as integer keyWait = -1
@@ -561,10 +607,16 @@ sub main(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
     
     dim byref as Object3 anchor    = getObjectBySid("anchor", objects())
     dim byref as Object3 spaceship = getObjectBySid("spaceship", objects())
+    dim byref as Object3 asteroid  = getObjectBySid("asteroid", objects())
     dim byref as Object3 active    = spaceship
+
+    asteroid.mesh.texture = imagecreate(64, 64)
+    bload "data/mesh/textures/asteroid64.bmp", asteroid.mesh.texture
     
     spaceship.mesh.doubleSided = true
     spaceship.mesh.paintFaces(&hc0c0c0)
+
+    asteroid.callback = @animateAsteroid
     
     frameStartTime = timer
     while not multikey(SC_ESCAPE)
@@ -686,6 +738,20 @@ sub drawMouseCursor(byref mouse as Mouse2)
     line -(a.x, a.y), &hf0f0f0, , ants
 end sub
 
+sub fpsUpdate (byref fps as integer)
+    static as double fpsResetTime = -1
+    static as integer frameCount
+    frameCount += 1
+    if fpsResetTime = -1 then
+        fpsResetTime = timer + 1
+    elseif timer > fpsResetTime then
+        fpsResetTime = timer + 1
+        fps = frameCount
+        frameCount = 0
+    end if
+end sub
+
+
 sub printDebugInfo(byref active as Object3)
 
     printStringBlock( 1, 1, getOrientationStats(active.cframe), "ORIENTATION", "_", "")
@@ -713,23 +779,12 @@ sub printDebugInfo(byref active as Object3)
     '~ row += 5
     '~ printStringBlock(row, 1, buffer, "SPEED FACTOR", "_", "")
 
-    '~ buffer = space(21)
-    '~ mid(buffer, 1) = format_decimal(fps, 1)
-    '~ row += 5
-    '~ printStringBlock(row, 1, buffer, "FPS", "_", "")
-end sub
-
-sub fpsUpdate (byref fps as integer)
-    static as double fpsResetTime = -1
-    static as integer frameCount
-    frameCount += 1
-    if fpsResetTime = -1 then
-        fpsResetTime = timer + 1
-    elseif timer > fpsResetTime then
-        fpsResetTime = timer + 1
-        fps = frameCount
-        frameCount = 0
-    end if
+    static as integer fps
+    fpsUpdate fps
+    buffer = space(21)
+    mid(buffer, 1) = format_decimal(fps, 1)
+    row += 5
+    printStringBlock(row, 1, buffer, "FPS", "_", "")
 end sub
 
 sub handleFlyInput(byref active as Object3, byref mouse as Mouse2, byref camera as CFrame3, byref world as CFrame3, deltaTime as double, resetMode as boolean = false)
@@ -837,7 +892,7 @@ sub handleOrbitInput(byref active as Object3, byref mouse as Mouse2, byref camer
 
     if resetMode then
         active.angular = Vector3.Randomized()
-        offset = Vector3.Randomized() * (15 + 15*rnd)
+        offset = Vector3.Randomized() * (15 + 30*rnd)
         camera.position = active.position + active.toLocal(offset)
         upward = Vector3.Randomized()
     end if
@@ -847,7 +902,7 @@ sub handleOrbitInput(byref active as Object3, byref mouse as Mouse2, byref camer
         camera.position += camera.rightward * mouse.dragX * deltaTime * 30
         camera.position += camera.upward * mouse.dragY * deltaTime * 30
     else
-        'camera.position -= camera.rightward * deltaTime * 3
+        camera.position -= camera.rightward * deltaTime * 3
     end if
     
 end sub

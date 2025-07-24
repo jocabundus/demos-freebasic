@@ -139,9 +139,10 @@ function Object3.toLocal(a as Vector3) as Vector3
     )
 end function
 function Object3.toWorld() as Object3
+    dim as Object3 o = this
     for i as integer = 0 to ubound(mesh.vertexes)
         dim as Vector3 v = mesh.vertexes(i)
-        mesh.vertexes(i) = Vector3(_
+        o.mesh.vertexes(i) = Vector3(_
             dot(rightward, v),_
             dot(upward   , v),_
             dot(forward  , v) _
@@ -149,13 +150,13 @@ function Object3.toWorld() as Object3
     next i
     for i as integer = 0 to ubound(mesh.faces)
         dim as Vector3 n = mesh.faces(i).normal
-        mesh.faces(i).normal = Vector3(_
+        o.mesh.faces(i).normal = Vector3(_
             dot(rightward, n),_
             dot(upward   , n),_
             dot(forward  , n) _
         )
     next i
-    return this
+    return o
 end function
 '==============================================================================
 '= FUNCTION

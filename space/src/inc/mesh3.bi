@@ -27,6 +27,7 @@ type Mesh3
     doubleSided as boolean = false
     faces(any) as Face3
     normals(any) as Vector3
+    texture as any ptr
     vertexes(any) as Vector3
     uvs(any) as Vector2
     sid as string

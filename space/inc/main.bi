@@ -71,6 +71,65 @@ function ScreenMetaType.setView(lft as double, top as double, rgt as double, btm
     return this
 end function
 
+type Image32
+    as any ptr buffer
+    as _long_  bpp
+    as _long_  pitch
+    as any ptr pixdata
+    as _long_  w, h
+    declare constructor        ()
+    declare constructor        (w as _long_, h as _long_)
+    declare function create    (w as _long_, h as _long_) as Image32
+    declare function getPixel  (x as _long_, y as _long_) as ulong
+    declare function getPixel  (x as double, y as double) as ulong
+    declare function readInfo  (imageBuffer as any ptr) as Image32
+    declare function load      (filename as string) as Image32
+    declare function plotPixel (x as _long_, y as _long_, colr as ulong) as Image32
+end type
+constructor Image32
+end constructor
+constructor Image32(w as _long_, h as _long_)
+    this.create(w, h)
+end constructor
+function Image32.create(w as _long_, h as _long_) as Image32
+    this.buffer = imagecreate(w, h)
+    return this.readInfo(this.buffer)
+end function
+function Image32.getPixel(x as _long_, y as _long_) as ulong
+    dim as long ptr pixel = this.pixdata + this.pitch * y + x
+    return *pixel
+end function
+function Image32.getPixel(x as double, y as double) as ulong
+    dim as ulong ptr pixel
+    dim as integer offset
+    if this.buffer = 0 then
+        return &hff0000
+    end if
+    if this.pixdata = 0 then
+        return &h00ffff
+    end if
+    offset = this.pitch * int(this.h * y) + this.bpp * int(this.w * x)
+    pixel = this.pixdata + offset
+    return *pixel
+end function
+function Image32.readInfo(imageBuffer as any ptr) as Image32
+    this.buffer = imageBuffer
+    imageinfo this.buffer, this.w, this.h, this.bpp, this.pitch, this.pixdata
+    return this
+end function
+function Image32.load(filename as string) as Image32
+    bload filename, this.buffer
+    return this
+end function
+function Image32.plotPixel(x as _long_, y as _long_, colr as ulong) as Image32
+    dim as ulong ptr pixel
+    dim as integer offset
+    offset = this.pitch * y + this.bpp * x
+    pixel = this.pixdata + offset
+    *pixel = colr
+    return this
+end function
+
 declare sub init       (byref mouse as Mouse2, objects() as Object3, particles() as ParticleType)
 declare sub initScreen ()
 declare sub main       (byref mouse as Mouse2, objects() as Object3, particles() as ParticleType)
