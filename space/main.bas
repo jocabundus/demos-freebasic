@@ -85,7 +85,7 @@ sub init(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
     mouse.hide()
     mouse.setMode(Mouse2Mode.Viewport)
     array_append(objects, Object3("anchor"))
-    array_append(objects, Object3("spaceship", "mesh/spaceship3.obj"))
+    array_append(objects, Object3("spaceship", "data/mesh/spaceship.obj"))
     for i as integer = 0 to ubound(particles)
         dim as ParticleType p = type(_
             Vector3(_
