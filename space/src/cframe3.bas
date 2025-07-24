@@ -50,9 +50,9 @@ end operator
 '==============================================================================
 '= PROPERTY
 '==============================================================================
-property CFrame3.vForward as Vector3: return this.orientation.vForward: end property
-property CFrame3.vRight as Vector3  : return this.orientation.vRight  : end property
-property CFrame3.vUp as Vector3     : return this.orientation.vUp     : end property
+property CFrame3.forward   as Vector3: return this.orientation.forward  : end property
+property CFrame3.rightward as Vector3: return this.orientation.rightward: end property
+property CFrame3.upward    as Vector3: return this.orientation.upward   : end property
 '==============================================================================
 '= FUNCTION
 '==============================================================================

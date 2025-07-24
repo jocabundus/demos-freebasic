@@ -85,4 +85,4 @@ declare sub drawReticle     (byref mouse as Mouse2, reticleColor as integer = &h
 declare sub fpsUpdate       (byref fps as integer)
 declare sub printDebugInfo  (byref active as Object3)
 declare sub renderFrame     (byref camera as CFrame3, byref world as CFrame3, objects() as Object3, particles() as ParticleType)
-declare sub renderUI        (byref mouse as Mouse2, byref camera as CFrame3, byref world as CFrame3, deltaTime as double)
+declare sub renderUI        (byref mouse as Mouse2, byref camera as CFrame3, byref world as CFrame3, navMode as NavigationMode, deltaTime as double)

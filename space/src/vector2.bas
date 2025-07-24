@@ -113,3 +113,13 @@ end function
 function Vector2.rotatedRight() as Vector2
     return rotate_right(this)
 end function
+static function Vector2.Randomized() as Vector2
+    return normalize(type(-.5+rnd,-.5+rnd))
+end function
+static function Vector2.Randomized(a as double, b as double) as Vector2
+    dim as double sum = a + b
+    return normalize(type(-.5+rnd,-.5+rnd) * type(a/sum, b/sum))
+end function
+static function Vector2.Zero() as Vector2
+    return type(0, 0)
+end function

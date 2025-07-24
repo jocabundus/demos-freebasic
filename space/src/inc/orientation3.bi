@@ -13,17 +13,14 @@ type Orientation3
     }
     declare constructor ()
     declare constructor (o0 as Vector3, o1 as Vector3, o2 as Vector3)
-    declare property vForward as Vector3
-    declare property vForward(newForward as Vector3)
-    declare property vRight as Vector3
-    declare property vRight(newRight as Vector3)
-    declare property vUp as Vector3
-    declare property vUp(newUp as Vector3)
+    declare property forward as Vector3
+    declare property rightward as Vector3
+    declare property upward as Vector3
     declare function lerped(goal as Orientation3, a as double=0.5) as Orientation3
     declare static function Look(forward as Vector3, worldUp as Vector3 = type(0, 1, 0)) as Orientation3
 end type
 
 declare operator * (a as Orientation3, b as Orientation3) as Orientation3
-declare operator * (a as Orientation3, b as Vector3) as Orientation3
+declare operator * (a as Orientation3, axisRotations as Vector3) as Orientation3
 
 declare function lerp overload(from as Orientation3, goal as Orientation3, a as double=0.5) as Orientation3

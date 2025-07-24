@@ -5,10 +5,10 @@ end constructor
 constructor Mouse2(initMode as integer)
     _mode = initMode
 end constructor
-property Mouse2.deltaX         as _long_ : return _xDelta                         : end property
-property Mouse2.deltaY         as _long_ : return _yDelta                         : end property
-property Mouse2.dragX          as _long_ : return _dragDeltaX                     : end property
-property Mouse2.dragY          as _long_ : return _dragDeltaY                     : end property
+property Mouse2.deltaX         as double : return _xDelta                         : end property
+property Mouse2.deltaY         as double : return _yDelta                         : end property
+property Mouse2.dragX          as double : return _dragDeltaX                     : end property
+property Mouse2.dragY          as double : return _dragDeltaY                     : end property
 property Mouse2.leftClicked    as boolean: return _events(Mouse2Event.LeftDown)   : end property
 property Mouse2.leftReleased   as boolean: return _events(Mouse2Event.LeftUp)     : end property
 property Mouse2.leftDown       as boolean: return iif(buttons and 1, true, false) : end property

@@ -13,6 +13,9 @@ type Vector3
     x as double
     y as double
     z as double
+    declare static function Randomized() as Vector3
+    declare static function Randomized(a as double, b as double, c as double) as Vector3
+    declare static function Zero() as Vector3
     declare constructor()
     declare constructor(x as double, y as double, z as double)
     declare function length() as double

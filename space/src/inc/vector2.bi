@@ -6,6 +6,9 @@
 type Vector2
     x as double
     y as double
+    declare static function Randomized() as Vector2
+    declare static function Randomized(a as double, b as double) as Vector2
+    declare static function Zero() as Vector2
     declare constructor()
     declare constructor(x as double, y as double)
     declare constructor(radians as double)

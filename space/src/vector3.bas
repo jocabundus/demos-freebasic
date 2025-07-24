@@ -115,3 +115,13 @@ end function
 function Vector3.rotated(radians as double, axis as integer = 2) as Vector3
     return rotate(this, radians, axis)
 end function
+static function Vector3.Randomized() as Vector3
+    return normalize(type(-.5+rnd,-.5+rnd,-.5+rnd))
+end function
+static function Vector3.Randomized(a as double, b as double, c as double) as Vector3
+    dim as double sum = a + b + c
+    return normalize(type(-.5+rnd,-.5+rnd,-.5+rnd) * type(a/sum, b/sum, c/sum))
+end function
+static function Vector3.Zero() as Vector3
+    return type(0, 0, 0)
+end function

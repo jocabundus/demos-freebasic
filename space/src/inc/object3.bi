@@ -18,9 +18,10 @@ type Object3
     declare property position(newPosition as Vector3)
     declare property orientation as Orientation3
     declare property orientation(newOrientation as Orientation3)
-    declare property vForward as Vector3
-    declare property vRight as Vector3
-    declare property vUp as Vector3
+    declare property forward as Vector3
+    declare property rightward as Vector3
+    declare property upward as Vector3
+    declare function toLocal(a as Vector3) as Vector3
     declare function toWorld() as Object3
     declare function loadFile (filename as string) as integer
 end type

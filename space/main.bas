@@ -135,9 +135,9 @@ end sub
 '=======================================================================
 function localToWorld overload(position as vector3, world as CFrame3) as Vector3
     return Vector3(_
-        dot(world.vRight  , position),_
-        dot(world.vUp     , position),_
-        dot(world.vForward, position) _
+        dot(world.rightward, position),_
+        dot(world.upward   , position),_
+        dot(world.forward  , position) _
     )
 end function
 
@@ -149,9 +149,9 @@ function worldToView(position as vector3, camera as CFrame3, skipTranslation as 
         position -= camera.position
     end if
     return Vector3(_
-        dot(camera.vRight  , position),_
-        dot(camera.vUp     , position),_
-       -dot(camera.vForward, position) _
+        dot(camera.rightward, position),_
+        dot(camera.upward   , position),_
+       -dot(camera.forward  , position) _
     )
 end function
 
@@ -342,8 +342,8 @@ sub renderFaceSolid(byref face as Face3, byref mesh as Mesh3, byref camera as CF
     cr = rgb_r(face.colr)
     cg = rgb_g(face.colr)
     cb = rgb_b(face.colr)
-    dt = dot(face.normal, normalize(world.vUp + camera.vForward))
-    dt = dot(face.normal, world.vUp)
+    dt = dot(face.normal, normalize(world.upward + camera.forward))
+    dt = dot(face.normal, world.upward)
     value = 64 * dt
     colr = rgb(_
         clamp(cr+value, 0, 255),_
@@ -392,7 +392,7 @@ sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as
     cr = rgb_r(face.colr)
     cg = rgb_g(face.colr)
     cb = rgb_b(face.colr)
-    dt = dot(face.normal, World.vUp)
+    dt = dot(face.normal, world.upward)
     dt = dot(face.normal, normalize(camera.position - face.position))
     value = 64 * (-0.5 + dt)
     colr = rgb(_
@@ -565,15 +565,13 @@ sub main(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
     
     spaceship.mesh.doubleSided = true
     spaceship.mesh.paintFaces(&hc0c0c0)
-
-    setmouse pmap(0, 0), pmap(0, 1) '- todo: put in mouse2.bi?
     
     frameStartTime = timer
     while not multikey(SC_ESCAPE)
 
         animateObjects objects(), camera, world, deltaTime
         renderFrame    camera, world, objects(), particles()
-        renderUI       mouse, camera, world, deltaTime
+        renderUI       mouse, camera, world, navMode, deltaTime
         printDebugInfo active
         
         screencopy 1, 0
@@ -582,13 +580,6 @@ sub main(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
         frameStartTime = timer
 
         mouse.update
-
-        select case navMode
-            case NavigationMode.Fly   : handleFlyInput    active, mouse, camera, world, deltaTime, resetMode
-            case NavigationMode.Follow: handleFollowInput active, mouse, camera, world, deltaTime, resetMode
-            case NavigationMode.Orbit : handleOrbitInput  active, mouse, camera, world, deltaTime, resetMode
-        end select
-        resetMode = false
 
         if RENDER_MODE = RenderMode.Textured then
             if multikey(SC_F1) then QUALITY = 0: AUTO_QUALITY = AutoQuality.None
@@ -621,12 +612,19 @@ sub main(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
             keyWait = -1
         end if
 
-        if multikey(SC_1) then navMode = NavigationMode.Fly   : active = anchor   : resetMode = true
-        if multikey(SC_2) then navMode = NavigationMode.Follow: active = spaceship: resetMode = true
-        if multikey(SC_3) then navMode = NavigationMode.Orbit : active = spaceship: resetMode = true
+        keydown(SC_1, keyWait, navMode = NavigationMode.Fly   : active = anchor   : resetMode = true)
+        keydown(SC_3, keyWait, navMode = NavigationMode.Follow: active = spaceship: resetMode = true)
+        keydown(SC_4, keyWait, navMode = NavigationMode.Orbit : active = spaceship: resetMode = true)
+
+        select case navMode
+            case NavigationMode.Fly   : handleFlyInput    active, mouse, camera, world, deltaTime, resetMode
+            case NavigationMode.Follow: handleFollowInput active, mouse, camera, world, deltaTime, resetMode
+            case NavigationMode.Orbit : handleOrbitInput  active, mouse, camera, world, deltaTime, resetMode
+        end select
+        resetMode = false
 
         if multikey(SC_CONTROL) <> 0 or mouse.middleDown then
-            camera.lookAt(spaceship.position, spaceship.vUp)
+            camera.lookAt(spaceship.position, spaceship.upward)
         end if
     wend
 end sub
@@ -639,8 +637,10 @@ sub renderFrame(byref camera as CFrame3, byref world as CFrame3, objects() as Ob
     renderObjects(objects(), cam, world)
 end sub
 
-sub renderUI(byref mouse as Mouse2, byref camera as CFrame3, byref world as CFrame3, deltaTime as double)
-    drawReticle mouse
+sub renderUI(byref mouse as Mouse2, byref camera as CFrame3, byref world as CFrame3, navMode as NavigationMode, deltaTime as double)
+    if navMode = NavigationMode.Fly then
+        drawReticle mouse
+    end if
     drawMouseCursor mouse
 end sub
 
@@ -825,7 +825,7 @@ sub handleFollowInput(byref active as Object3, byref mouse as Mouse2, byref came
 
     dim as Vector3 followDistance = distances(distanceId)
     dim as CFrame3 cameraGoal = (_
-        active.cframe - active.vForward * followDistance.z + active.vUp * followDistance.y _
+        active.cframe - active.forward * followDistance.z + active.upward * followDistance.y _
     )
     camera = lerpexp(camera, cameraGoal, deltaTime * 3)
         
@@ -833,11 +833,21 @@ end sub
 
 sub handleOrbitInput(byref active as Object3, byref mouse as Mouse2, byref camera as CFrame3, byref world as CFrame3, deltaTime as double, resetMode as boolean = false)
 
-    if resetMode then
-        camera.position = active.position + normalize(Vector3(rnd, rnd, rnd)) * (15 + 30*rnd)
-    end if
+    static as Vector3 offset, upward
 
-    camera.lookAt(active.position, active.vUp)
-    camera.position += cross(world.vUp, normalize(active.position - camera.position)) * deltaTime * 3
+    if resetMode then
+        active.angular = Vector3.Randomized()
+        offset = Vector3.Randomized() * (15 + 15*rnd)
+        camera.position = active.position + active.toLocal(offset)
+        upward = Vector3.Randomized()
+    end if
+    
+    camera.lookAt(active.position, upward)
+    if mouse.leftDown then
+        camera.position += camera.rightward * mouse.dragX * deltaTime * 30
+        camera.position += camera.upward * mouse.dragY * deltaTime * 30
+    else
+        'camera.position -= camera.rightward * deltaTime * 3
+    end if
     
 end sub

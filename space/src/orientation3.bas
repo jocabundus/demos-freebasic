@@ -25,14 +25,14 @@ operator * (a as Orientation3, b as Orientation3) as Orientation3
         dot(a.matrix(), b.matrix(2)) _
     )
 end operator
-operator * (a as Orientation3, b as Vector3) as Orientation3
+operator * (a as Orientation3, axisRotations as Vector3) as Orientation3
     dim as Vector3 x, y, z
     dim as double radians
     for i as integer = 0 to 2
         select case i
-            case Axis3.X: radians = b.x
-            case Axis3.Y: radians = b.y
-            case Axis3.Z: radians = b.z
+            case Axis3.X: radians = axisRotations.x
+            case Axis3.Y: radians = axisRotations.y
+            case Axis3.Z: radians = axisRotations.z
         end select
         if radians then
             select case i
@@ -57,12 +57,9 @@ end operator
 '===============================================================================
 '= PROPERTY
 '===============================================================================
-property Orientation3.vForward as Vector3            : return this.matrix(Axis3.Z)      : end property
-property Orientation3.vForward(newForward as Vector3): this.matrix(Axis3.Z) = newForward: end property
-property Orientation3.vRight as Vector3              : return this.matrix(Axis3.X)      : end property
-property Orientation3.vRight(newRight as Vector3)    : this.matrix(Axis3.X) = newRight  : end property
-property Orientation3.vUp as Vector3                 : return this.matrix(Axis3.Y)      : end property
-property Orientation3.vUp(newUp as Vector3)          : this.matrix(Axis3.Y) = newUp     : end property
+property Orientation3.forward as Vector3  : return this.matrix(Axis3.Z): end property
+property Orientation3.rightward as Vector3: return this.matrix(Axis3.X): end property
+property Orientation3.upward as Vector3   : return this.matrix(Axis3.Y): end property
 '===============================================================================
 '= FUNCTION
 '===============================================================================
@@ -79,10 +76,10 @@ end function
 function Orientation3.lerped(goal as Orientation3, a as double=0.5) as Orientation3
     return lerp(this, goal, a)
 end function
-function Orientation3.Look(forward as Vector3, worldUp as Vector3 = type(0, 1, 0)) as Orientation3
-    dim as Vector3 rght, up
-    forward = normalize(forward)
-    rght = normalize(cross(forward, worldUp))
-    up   = normalize(cross(forward, rght))
-    return Orientation3(rght, up, forward)
+function Orientation3.Look(direction as Vector3, worldUp as Vector3 = type(0, 1, 0)) as Orientation3
+    dim as Vector3 x, y, z
+    z = normalize(direction)
+    x = normalize(cross(z, worldUp))
+    y = normalize(cross(z, x))
+    return Orientation3(x, y, z)
 end function
