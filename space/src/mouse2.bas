@@ -1,4 +1,4 @@
-#include "mouse2.bi"
+#include once "mouse2.bi"
 
 constructor Mouse2
 end constructor

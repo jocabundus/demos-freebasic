@@ -22,6 +22,7 @@
 #cmdline "-b src/vector3.bas"
 #cmdline "-b src/orientation3.bas"
 #cmdline "-b src/cframe3.bas"
+#cmdline "-b src/face3.bas"
 #cmdline "-b src/mesh3.bas"
 #cmdline "-b src/object3.bas"
 #cmdline "-b src/colorspace.bas"
@@ -34,6 +35,7 @@
 #include once "vector3.bi"
 #include once "orientation3.bi"
 #include once "cframe3.bi"
+#include once "face3.bi"
 #include once "mesh3.bi"
 #include once "object3.bi"
 #include once "colorspace.bi"
@@ -59,7 +61,7 @@ const FIELD_SIZE = 500
 '------------------------------------------------------------------------------
 dim shared as ScreenMetaType ScreenMeta
 dim shared as integer RENDER_MODE = RenderMode.Textured
-dim shared as integer QUALITY = 2, MIN_QUALITY = 0, MAX_QUALITY = 5 '- 0 is best
+dim shared as integer QUALITY = 3, MIN_QUALITY = 0, MAX_QUALITY = 5 '- 0 is best
 dim shared as integer AUTO_QUALITY = AutoQuality.DistanceBased
 
 dim as Mouse2 mouse
@@ -82,21 +84,17 @@ sub init(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
     initScreen()
     mouse.hide()
     mouse.setMode(Mouse2Mode.Viewport)
-    array_append(objects, Object3("anchor"))
-    array_append(objects, Object3("spaceship", "data/mesh/spaceship3.obj"))
-    array_append(objects, Object3("asteroid", "data/mesh/rocks.obj"))
-    for i as integer = 0 to ubound(particles)
-        dim as ParticleType p = type(_
-            Vector3(_
-                FIELD_SIZE/2 * rnd*sin(2*pi*rnd),_
-                FIELD_SIZE/2 * rnd*sin(2*pi*rnd),_
-                FIELD_SIZE/2 * rnd*sin(2*pi*rnd) _
-            ),_
-            ColorSpace2.SampleColor(2*pi*rnd, rnd, 2)_
-        )
-        particles(i) = p
-    next i
+    dim byref as Object3 anchor    = addObject(   "anchor", objects())
+    dim byref as Object3 asteroid  = addObject( "asteroid", objects(), "data/mesh/rocks.obj")
+    anchor.position = Vector3(1, 1, 1) * 2 * pi
+    asteroid.callback = @animateAsteroid
     dim as Image32 image = type(64, 64)
+    image.load("data/mesh/textures/asteroid64.bmp")
+    asteroid.mesh.texture = image.buffer
+    dim byref as Object3 spaceship = addObject("spaceship", objects(), "data/mesh/spaceship3.obj")
+    spaceship.mesh.doubleSided = true
+    spaceship.mesh.paintFaces(&hc0c0c0)
+    dim as Image32 image2 = type(64, 64)
     dim as double a, b, u, v
     dim as long colr, value
     dim as long ubr, ubg, ubb
@@ -112,11 +110,21 @@ sub init(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
             ubg = clamp(rgb_g(colr) + value, 0, 255)
             ubb = clamp(rgb_b(colr) + value, 0, 255)
             colr = rgb(ubr, ubg, ubb)
-            image.plotPixel(x, y, colr)
+            image2.plotPixel(x, y, colr)
         next x
     next y
-    dim byref as Object3 spaceship = getObjectBySid("spaceship", objects())
-    spaceship.mesh.texture = image.buffer
+    spaceship.mesh.texture = image2.buffer
+    for i as integer = 0 to ubound(particles)
+        dim as ParticleType p = type(_
+            Vector3(_
+                FIELD_SIZE/2 * rnd*sin(2*pi*rnd),_
+                FIELD_SIZE/2 * rnd*sin(2*pi*rnd),_
+                FIELD_SIZE/2 * rnd*sin(2*pi*rnd) _
+            ),_
+            ColorSpace2.SampleColor(2*pi*rnd, rnd, 2)_
+        )
+        particles(i) = p
+    next i
 end sub
 
 sub shutdown(mouse as Mouse2)
@@ -161,7 +169,7 @@ function worldToView(position as vector3, camera as CFrame3, skipTranslation as 
     return Vector3(_
         dot(camera.rightward, position),_
         dot(camera.upward   , position),_
-       -dot(camera.forward  , position) _
+        dot(camera.forward  , position) _
     )
 end function
 
@@ -174,8 +182,8 @@ end function
 function viewToScreen(vp as vector3, fov as double = 1) as Vector2
     dim as Vector2 v2
     vp.z *= fov
-    v2.x = (vp.x / -vp.z) * 2
-    v2.y = (vp.y / -vp.z) * 2
+    v2.x = (vp.x / vp.z) * 2
+    v2.y = (vp.y / vp.z) * 2
     return v2
 end function
 
@@ -349,7 +357,7 @@ sub renderFaceSolid(byref face as Face3, byref mesh as Mesh3, byref camera as CF
     for i as integer = 0 to ubound(face.vertexIds)
         worldVertex   = mesh.getVertex(face.vertexIds(i))
         viewVertex(i) = worldToView(worldVertex, camera)
-        if viewVertex(i).z > -1 then
+        if viewVertex(i).z < 1 then
             exit sub
         end if
     next i
@@ -404,7 +412,7 @@ sub renderFaceTextured(byref face as Face3, byref mesh as Mesh3, byref camera as
     for i as integer = 0 to ubound(face.vertexIds)
         worldVertex   = mesh.getVertex(face.vertexIds(i))
         viewVertex(i) = worldToView(worldVertex, camera)
-        if viewVertex(i).z >= 0 then '- closer allow because draw sub clips
+        if viewVertex(i).z <= 0 then '- closer allow because draw sub clips
             exit sub
         end if
     next i
@@ -483,7 +491,7 @@ sub renderFaceWireframe(byref face as Face3, byref mesh as Mesh3, byref camera a
     for i as integer = 0 to ubound(face.vertexIds)
         worldVertex   = mesh.getVertex(face.vertexIds(i))
         viewVertex(i) = worldToView(worldVertex, camera)
-        if viewVertex(i).z > -1 then
+        if viewVertex(i).z < 1 then
             exit sub
         end if
     next i
@@ -533,12 +541,14 @@ sub renderBspFaces(node as BspNode3 ptr, byref mesh as Mesh3, byref camera as CF
     end if
 end sub
 sub renderObjects(objects() as Object3, byref camera as CFrame3, byref world as CFrame3)
-    dim as Mesh3 mesh
     dim as Object3 o
+    dim as Mesh3 mesh
+    dim as Face3 face
+    dim as Vector3 v
     dim as double dist
     for i as integer = 0 to ubound(objects)
-        'objects(i).world = world
         o = objects(i).toWorld()
+        mesh = o.mesh
         if AUTO_QUALITY = AutoQuality.DistanceBased then
             dist = (o.cframe.position - camera.position).length
             select case dist
@@ -551,7 +561,6 @@ sub renderObjects(objects() as Object3, byref camera as CFrame3, byref world as 
             end select
             QUALITY = iif(QUALITY < MIN_QUALITY, MIN_QUALITY, iif(QUALITY > MAX_QUALITY, MAX_QUALITY, QUALITY))
         end if
-        mesh = o.mesh
         renderBspFaces mesh.bspRoot, mesh, camera, world
     next i
 end sub
@@ -563,7 +572,7 @@ sub renderParticles(particles() as ParticleType, byref camera as CFrame3)
     for i as integer = 0 to ubound(particles)
         particle = particles(i)
         vertex = worldToView(particle.position, camera)
-        if vertex.z < -1 then
+        if vertex.z > 1 then
             coords = viewToScreen(vertex)
             radius = abs(1/vertex.z) * 0.2
             circle(coords.x, coords.y), radius, particle.getTwinkleColor()
@@ -589,7 +598,7 @@ sub animateAsteroid(byref o as Object3, byref camera as CFrame3, byref world as 
     else
         cf.position = o.position
         cf.lookAt(origin, world.upward)
-        o.cframe.position += normalize(cf.rightward - cf.upward) * 0.1
+        o.cframe.position += normalize(cf.rightward - cf.upward) * deltaTime
     end if
 end sub
 
@@ -598,7 +607,7 @@ end sub
 '==============================================================================
 sub main(byref mouse as Mouse2, objects() as Object3, particles() as ParticleType)
 
-    dim as CFrame3 world ': world *= Vector3(0, rad(180), 0)
+    dim as CFrame3 world
     dim as CFrame3 camera
     dim as double  deltaTime, frameStartTime
     dim as integer keyWait = -1
@@ -610,21 +619,39 @@ sub main(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
     dim byref as Object3 asteroid  = getObjectBySid("asteroid", objects())
     dim byref as Object3 active    = spaceship
 
-    asteroid.mesh.texture = imagecreate(64, 64)
-    bload "data/mesh/textures/asteroid64.bmp", asteroid.mesh.texture
-    
-    spaceship.mesh.doubleSided = true
-    spaceship.mesh.paintFaces(&hc0c0c0)
-
-    asteroid.callback = @animateAsteroid
-    
     frameStartTime = timer
     while not multikey(SC_ESCAPE)
+
+        select case navMode
+            case NavigationMode.Fly   : handleFlyInput    active, mouse, camera, world, deltaTime, resetMode
+            case NavigationMode.Follow: handleFollowInput active, mouse, camera, world, deltaTime, resetMode
+            case NavigationMode.Orbit : handleOrbitInput  active, mouse, camera, world, deltaTime, resetMode
+        end select
+        resetMode = false
 
         animateObjects objects(), camera, world, deltaTime
         renderFrame    camera, world, objects(), particles()
         renderUI       mouse, camera, world, navMode, deltaTime
-        printDebugInfo active
+        printDebugInfo active.cframe
+        
+        '~ for i as integer = 0 to ubound(objects)
+            '~ dim as Object3 o = objects(i)
+            '~ dim as Vector3 p, v(2)
+            '~ dim as Vector2 a, b
+            '~ p = worldToView(o.position, camera)
+            '~ if p.z > 1 then
+                '~ v(0) = worldToView(o.position + o.rightward * pi, camera)
+                '~ v(1) = worldToView(o.position + o.upward    * pi, camera)
+                '~ v(2) = worldToView(o.position + o.forward   * pi, camera)
+                '~ a = viewToScreen(p)
+                '~ for j as integer = 0 to ubound(v)
+                    '~ b = viewToScreen(v(j))
+                    '~ line (a.x, a.y)-(b.x, b.y), iif(j = 0, &hff0000, iif(j = 1, &h00ff00, &h0000ff)), , &hcccc
+                    '~ draw string (b.x, b.y), iif(j = 0, "X", iif(j = 1, "Y", "Z"))
+                '~ next j
+                '~ draw string (a.x, a.y), o.sid
+            '~ end if
+        '~ next i
         
         screencopy 1, 0
 
@@ -642,7 +669,7 @@ sub main(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
             if multikey(SC_F6) then QUALITY = 5: AUTO_QUALITY = AutoQuality.None
         end if
 
-        if multikey(SC_O) then active.cframe.orientation = Orientation3()
+        if multikey(SC_O) then active.cframe = CFrame3()
         if multikey(SC_X) then active.cframe.orientation = Orientation3() * Vector3(pi/2, 0, 0)
         if multikey(SC_Y) then active.cframe.orientation = Orientation3() * Vector3(0, pi/2, 0)
         if multikey(SC_Z) then active.cframe.orientation = Orientation3() * Vector3(0, 0, pi/2)
@@ -664,16 +691,9 @@ sub main(byref mouse as Mouse2, objects() as Object3, particles() as ParticleTyp
             keyWait = -1
         end if
 
-        keydown(SC_1, keyWait, navMode = NavigationMode.Fly   : active = anchor   : resetMode = true)
-        keydown(SC_3, keyWait, navMode = NavigationMode.Follow: active = spaceship: resetMode = true)
-        keydown(SC_4, keyWait, navMode = NavigationMode.Orbit : active = spaceship: resetMode = true)
-
-        select case navMode
-            case NavigationMode.Fly   : handleFlyInput    active, mouse, camera, world, deltaTime, resetMode
-            case NavigationMode.Follow: handleFollowInput active, mouse, camera, world, deltaTime, resetMode
-            case NavigationMode.Orbit : handleOrbitInput  active, mouse, camera, world, deltaTime, resetMode
-        end select
-        resetMode = false
+        keydown(SC_1, keyWait, navMode = NavigationMode.Fly   : @active = @anchor   : resetMode = true)
+        keydown(SC_2, keyWait, navMode = NavigationMode.Follow: @active = @spaceship: resetMode = true)
+        keydown(SC_3, keyWait, navMode = NavigationMode.Orbit : @active = @spaceship: resetMode = true)
 
         if multikey(SC_CONTROL) <> 0 or mouse.middleDown then
             camera.lookAt(spaceship.position, spaceship.upward)
@@ -752,10 +772,10 @@ sub fpsUpdate (byref fps as integer)
 end sub
 
 
-sub printDebugInfo(byref active as Object3)
+sub printDebugInfo(byval cframe as CFrame3)
 
-    printStringBlock( 1, 1, getOrientationStats(active.cframe), "ORIENTATION", "_", "")
-    printStringBlock(10, 1,    getLocationStats(active.cframe),    "LOCATION", "_", "")
+    printStringBlock( 1, 1, getOrientationStats(cframe), "ORIENTATION", "_", "")
+    printStringBlock(10, 1,    getLocationStats(cframe),    "LOCATION", "_", "")
 
     dim as integer row = 15
     dim as string buffer = space(21)
@@ -791,7 +811,7 @@ sub handleFlyInput(byref active as Object3, byref mouse as Mouse2, byref camera 
 
     dim as Vector3 angularGoal, linearGoal
     dim as double mx, my
-
+    
     if resetMode then
         active.cframe = camera
     end if
@@ -848,6 +868,10 @@ sub handleFollowInput(byref active as Object3, byref mouse as Mouse2, byref came
     }
     static as integer distanceId = 0
 
+    if resetMode then
+        distanceId = 0
+    end if
+
     if multikey(SC_2) and keyWait = -1 then
         keyWait = SC_2
         distanceId += 1
@@ -864,26 +888,32 @@ sub handleFollowInput(byref active as Object3, byref mouse as Mouse2, byref came
     if multikey(SC_LSHIFT) then linearGoal.y = -1
     if multikey(SC_W     ) then linearGoal.z =  1
     if multikey(SC_S     ) then linearGoal.z = -1
-    
+
     if multikey(SC_UP   ) then angularGoal.x =  1
     if multikey(SC_DOWN ) then angularGoal.x = -1
     if multikey(SC_RIGHT) then angularGoal.y =  1
     if multikey(SC_LEFT ) then angularGoal.y = -1
-    if multikey(SC_E    ) then angularGoal.z =  1
-    if multikey(SC_Q    ) then angularGoal.z = -1
+    if multikey(SC_E    ) then angularGoal.z = -1
+    if multikey(SC_Q    ) then angularGoal.z =  1
 
-    linearGoal = lerpexp(linearGoal, dot(active.orientation.matrix(), linearGoal*10), deltaTime/10)
-    angularGoal = lerpexp(angularGoal, angularGoal*2, deltaTime/15)
+    if linearGoal.length > 0 then
+        linearGoal = normalize(_
+            active.rightward * linearGoal.x + _
+            active.upward    * linearGoal.y + _
+            active.forward   * linearGoal.z _
+        )
+    end if
+    
+    angularGoal.z += -angularGoal.y
 
-    active.linear  = lerpexp(active.linear, linearGoal, deltaTime)
-    active.angular = lerpexp(active.angular, angularGoal, deltaTime)
+    active.linear  = lerpexp(active.linear, linearGoal*50, deltaTime*0.3)
+    active.angular = lerpexp(active.angular, angularGoal*1.5, deltaTime)
 
     dim as Vector3 followDistance = distances(distanceId)
-    dim as CFrame3 cameraGoal = (_
-        active.cframe - active.forward * followDistance.z + active.upward * followDistance.y _
-    )
-    camera = lerpexp(camera, cameraGoal, deltaTime * 3)
-        
+    dim as CFrame3 cameraGoal = type(_
+        active.position - active.forward * followDistance.z + active.upward * followDistance.y,_
+        active.orientation)
+    camera = lerpexp(camera, cameraGoal, deltaTime*3)
 end sub
 
 sub handleOrbitInput(byref active as Object3, byref mouse as Mouse2, byref camera as CFrame3, byref world as CFrame3, deltaTime as double, resetMode as boolean = false)
@@ -893,7 +923,7 @@ sub handleOrbitInput(byref active as Object3, byref mouse as Mouse2, byref camer
     if resetMode then
         active.angular = Vector3.Randomized()
         offset = Vector3.Randomized() * (15 + 30*rnd)
-        camera.position = active.position + active.toLocal(offset)
+        camera.position = active.position + active.vectorToLocal(offset)
         upward = Vector3.Randomized()
     end if
     

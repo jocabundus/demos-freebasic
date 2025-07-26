@@ -22,7 +22,7 @@ type Object3
     declare property forward as Vector3
     declare property rightward as Vector3
     declare property upward as Vector3
-    declare function toLocal(a as Vector3) as Vector3
-    declare function toWorld() as Object3
     declare function loadFile (filename as string) as integer
+    declare function toWorld() as Object3
+    declare function vectorToLocal(a as Vector3) as Vector3
 end type

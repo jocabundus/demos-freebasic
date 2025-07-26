@@ -3,41 +3,20 @@
 ' See main file or LICENSE for license and build info.
 ' -----------------------------------------------------------------------------
 #include once "mesh3.bi"
+#include once "bspnode.bi"
 
-#macro array_append(arr, value...)
+#macro array_append(arr, value)
     redim preserve arr(ubound(arr) + 1)
     arr(ubound(arr)) = value
 #endmacro
 
-function Face3.addUvId(uvId as integer) as Face3
-    array_append(uvIds, uvId)
-    return this
-end function
-function Face3.addVertexId(vertexId as integer) as Face3
-    array_append(vertexIds, vertexId)
-    return this
-end function
-static function Face3.calcNormal(vertexes() as Vector3) as Vector3
-    dim as Vector3 a, b, c, normal
-    dim as integer vertexCount = ubound(vertexes) + 1
-    if vertexCount = 3 then
-        a = vertexes(1)
-        b = vertexes(2)
-        c = vertexes(0)
-        normal = cross(a-c, b-c)
-    elseif vertexCount > 3 then
-        dim as integer ub = ubound(vertexes)
-        for i as integer = 1 to ub - 1
-            a = vertexes(0)
-            b = vertexes(i)
-            c = vertexes(i+1)
-            normal += cross(b-a, c-a)
-        next i
-    end if
-    return normalize(normal)
-end function
+#macro array_append_return_ubound(arr, value)
+    redim preserve arr(ubound(arr) + 1)
+    arr(ubound(arr)) = value
+    return ubound(arr)
+#endmacro
 
-function Mesh3.addFace(face as Face3) as Mesh3
+function Mesh3.addFace(face as Face3) as integer
     dim as Vector3 vertexSum
     dim as integer vertexId
     if ubound(face.vertexIds) >= 0 then
@@ -48,8 +27,7 @@ function Mesh3.addFace(face as Face3) as Mesh3
         face.position = vertexSum / (ubound(face.vertexIds) + 1)
     end if
     face.id = ubound(faces) + 1
-    array_append(faces, face)
-    return this
+    array_append_return_ubound(faces, face)
 end function
 '~ function Mesh3.getAverageTextureFaceColor() as integer
     '~ dim as Mesh3 mesh = spaceship->mesh
@@ -77,17 +55,14 @@ end function
         '~ spaceship->mesh.faces(i).colr = rgb(r, g, b)
     '~ next i
 '~ end function
-function Mesh3.addNormal(normal as Vector3) as Mesh3
-    array_append(normals, normal)
-    return this
+function Mesh3.addNormal(normal as Vector3) as integer
+    array_append_return_ubound(normals, normal)
 end function
-function Mesh3.addUV(uv as Vector2) as Mesh3
-    array_append(uvs, uv)
-    return this
+function Mesh3.addUV(uv as Vector2) as integer
+    array_append_return_ubound(uvs, uv)
 end function
-function Mesh3.addVertex(vertex as Vector3) as Mesh3
-    array_append(vertexes, vertex)
-    return this
+function Mesh3.addVertex(vertex as Vector3) as integer
+    array_append_return_ubound(vertexes, vertex)
 end function
 function Mesh3.centerGeometry() as Mesh3
     dim as Vector3 average

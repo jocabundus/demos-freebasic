@@ -4,7 +4,7 @@
 ' -----------------------------------------------------------------------------
 #include once "object3.bi"
 
-#macro array_append(arr, value...)
+#macro array_append(arr, value)
     redim preserve arr(ubound(arr) + 1)
     arr(ubound(arr)) = value
 #endmacro
@@ -66,14 +66,14 @@ function Object3.loadFile(filename as string) as integer
                         mesh.addVertex(Vector3(_
                             val(pieces(1)),_
                             val(pieces(2)),_
-                            val(pieces(3)) _
+                           -val(pieces(3)) _
                         ))
                     case "vn"
                         calcNormals = false
                         mesh.addNormal(Vector3(_
                             val(pieces(1)),_
                             val(pieces(2)),_
-                            val(pieces(3)) _
+                           -val(pieces(3)) _
                         ))
                     case "vt"
                         mesh.addUV(Vector2(_
@@ -131,33 +131,26 @@ function Object3.loadFile(filename as string) as integer
     mesh.buildBsp()
     return 0
 end function
-function Object3.toLocal(a as Vector3) as Vector3
+function Object3.toWorld() as Object3
+    dim as Object3 o = this
+    for i as integer = 0 to ubound(mesh.vertexes)
+        dim as Vector3 v = mesh.vertexes(i)
+        o.mesh.vertexes(i) = rightward * v.x + upward * v.y + forward * v.z + this.position
+    next i
+    for i as integer = 0 to ubound(mesh.faces)
+        dim as Vector3 n = mesh.faces(i).normal
+        o.mesh.faces(i).normal = rightward * n.x + upward * n.y + forward * n.z
+    next i
+    return o
+end function
+function Object3.vectorToLocal(a as Vector3) as Vector3
     return Vector3(_
         dot(rightward, a),_
         dot(upward   , a),_
         dot(forward  , a) _
     )
 end function
-function Object3.toWorld() as Object3
-    dim as Object3 o = this
-    for i as integer = 0 to ubound(mesh.vertexes)
-        dim as Vector3 v = mesh.vertexes(i)
-        o.mesh.vertexes(i) = Vector3(_
-            dot(rightward, v),_
-            dot(upward   , v),_
-            dot(forward  , v) _
-        ) + this.position
-    next i
-    for i as integer = 0 to ubound(mesh.faces)
-        dim as Vector3 n = mesh.faces(i).normal
-        o.mesh.faces(i).normal = Vector3(_
-            dot(rightward, n),_
-            dot(upward   , n),_
-            dot(forward  , n) _
-        )
-    next i
-    return o
-end function
+
 '==============================================================================
 '= FUNCTION
 '==============================================================================

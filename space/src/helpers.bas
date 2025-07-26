@@ -104,6 +104,11 @@ sub printStringBlock(row as integer, col as integer, text as string, header as s
     end if
 end sub
 
+function addObject(sid as string, objects() as Object3, filename as string = "") byref as Object3
+    dim as Object3 o = type(sid, filename)
+    array_append_return(objects, o)
+end function
+
 function getObjectBySid(sid as string, objects() as Object3) byref as Object3
     for i as integer = 0 to ubound(objects)
         if objects(i).sid = sid then

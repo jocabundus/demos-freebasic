@@ -82,8 +82,8 @@ type Image32
     declare function create    (w as _long_, h as _long_) as Image32
     declare function getPixel  (x as _long_, y as _long_) as ulong
     declare function getPixel  (x as double, y as double) as ulong
-    declare function readInfo  (imageBuffer as any ptr) as Image32
     declare function load      (filename as string) as Image32
+    declare function readInfo  (imageBuffer as any ptr) as Image32
     declare function plotPixel (x as _long_, y as _long_, colr as ulong) as Image32
 end type
 constructor Image32
@@ -100,14 +100,8 @@ function Image32.getPixel(x as _long_, y as _long_) as ulong
     return *pixel
 end function
 function Image32.getPixel(x as double, y as double) as ulong
-    dim as ulong ptr pixel
-    dim as integer offset
-    if this.buffer = 0 then
-        return &hff0000
-    end if
-    if this.pixdata = 0 then
-        return &h00ffff
-    end if
+    dim as long ptr pixel
+    dim as long offset
     offset = this.pitch * int(this.h * y) + this.bpp * int(this.w * x)
     pixel = this.pixdata + offset
     return *pixel
@@ -142,6 +136,8 @@ declare sub handleOrbitInput  (byref active as Object3, byref mouse as Mouse2, b
 declare sub drawMouseCursor (byref mouse as Mouse2)
 declare sub drawReticle     (byref mouse as Mouse2, reticleColor as integer = &h808080, arrowColor as integer = &hd0b000)
 declare sub fpsUpdate       (byref fps as integer)
-declare sub printDebugInfo  (byref active as Object3)
+declare sub printDebugInfo  (byval cframe as CFrame3)
 declare sub renderFrame     (byref camera as CFrame3, byref world as CFrame3, objects() as Object3, particles() as ParticleType)
 declare sub renderUI        (byref mouse as Mouse2, byref camera as CFrame3, byref world as CFrame3, navMode as NavigationMode, deltaTime as double)
+
+declare sub animateAsteroid(byref o as Object3, byref camera as CFrame3, byref world as CFrame3, deltaTime as double)
